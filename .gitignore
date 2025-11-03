@@ -44,6 +44,8 @@ MANIFEST
 *.manifest
 # Keep main.spec for build process
 !main.spec
+# Keep app.manifest for C# project
+!HoldSense/app.manifest
 
 # Installer logs
 pip-log.txt
