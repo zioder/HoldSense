@@ -85,7 +85,9 @@ Copy-Item -Recurse "$SourceDir\*" "$stagingDir\" -Force
 Write-Host "Updating manifest version to $Version..."
 $manifestContent = Get-Content "AppxManifest.xml" -Raw
 $manifestContent = $manifestContent -replace 'Version="[^"]*"', "Version=`"$Version`""
-$manifestContent | Out-File "$stagingDir\AppxManifest.xml" -Encoding UTF8
+# Use UTF8 without BOM to preserve XML declaration
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText("$stagingDir\AppxManifest.xml", $manifestContent, $utf8NoBom)
 
 # Create Assets folder and copy icons
 Write-Host "Preparing assets..."
