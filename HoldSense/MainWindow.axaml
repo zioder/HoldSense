@@ -1,0 +1,122 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:_HoldSense.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:converters="using:_HoldSense.Converters"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="550"
+        x:Class="_HoldSense.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="HoldSense - Phone Detection"
+        Width="700" Height="550"
+        WindowStartupLocation="CenterScreen"
+        Icon="avares://HoldSense/assets/HoldSense.ico">
+
+    
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="HoldSense"
+                       FontSize="28"
+                       FontWeight="Bold"
+                       HorizontalAlignment="Center"/>
+            <TextBlock Text="Automatic Bluetooth Audio Control via Phone Detection"
+                       FontSize="13"
+                       HorizontalAlignment="Center"
+                       Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <!-- Status Panel -->
+        <Border Grid.Row="1"
+                CornerRadius="8"
+                Padding="15"
+                Margin="0,0,0,15">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Status:"
+                                   FontWeight="SemiBold"
+                                   FontSize="14"/>
+                        <TextBlock Text="{Binding StatusMessage}"
+                                   FontSize="14"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Device:"
+                                   FontWeight="SemiBold"
+                                   FontSize="14"/>
+                        <TextBlock Text="{Binding SelectedDeviceName}"
+                                   FontSize="14"/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Spacing="15">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Ellipse Width="12" Height="12"
+                                     Fill="{Binding IsDetectionRunning, Converter={StaticResource BoolToColorConverter}}"/>
+                            <TextBlock Text="{Binding IsDetectionRunning, Converter={StaticResource BoolToStatusConverter}}"
+                                       FontSize="12"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+
+                <Button Grid.Column="1"
+                        Content="⚙ Settings"
+                        Command="{Binding OpenSettingsCommand}"
+                        VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- Control Buttons -->
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    Spacing="15"
+                    Margin="0,0,0,20">
+            <Button Content="▶ Start Detection"
+                    Command="{Binding StartDetectionCommand}"
+                    IsEnabled="{Binding !IsDetectionRunning}"/>
+            <Button Content="⏹ Stop Detection"
+                    Command="{Binding StopDetectionCommand}"
+                    IsEnabled="{Binding IsDetectionRunning}"/>
+        </StackPanel>
+
+        <!-- Footer Info -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Center"
+                    Spacing="20"
+                    Margin="0,15,0,0">
+            <TextBlock FontSize="11">
+                <Run Text="Detection:"/>
+                <Run Text="{Binding DetectionEnabled, Converter={StaticResource BoolToEnabledConverter}}"
+                     FontWeight="SemiBold"/>
+            </TextBlock>
+            <TextBlock FontSize="11">
+                <Run Text="Keybind (Ctrl+Alt+C):"/>
+                <Run Text="{Binding KeybindEnabled, Converter={StaticResource BoolToEnabledConverter}}"
+                     FontWeight="SemiBold"/>
+            </TextBlock>
+        </StackPanel>
+    </Grid>
+
+    <Window.Resources>
+        <!-- Converters -->
+        <converters:BoolToColorConverter x:Key="BoolToColorConverter" />
+        <converters:BoolToStatusConverter x:Key="BoolToStatusConverter" />
+        <converters:BoolToEnabledConverter x:Key="BoolToEnabledConverter" />
+    </Window.Resources>
+</Window>

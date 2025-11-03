@@ -1,0 +1,146 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:_HoldSense.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="550"
+        x:Class="_HoldSense.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="Settings"
+        Width="500" Height="550"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0"
+                   Text="Settings"
+                   FontSize="24"
+                   FontWeight="Bold"
+                   Margin="0,0,0,20"/>
+
+        <!-- Settings Content -->
+        <ScrollViewer Grid.Row="1">
+            <StackPanel Spacing="16">
+                <!-- Device Management Section -->
+                <Border BorderBrush="LightGray"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="15">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Bluetooth Device"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"/>
+
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="Current Device:"
+                                       FontSize="12"
+                                       Foreground="Gray"/>
+                            <TextBlock Text="{Binding SelectedDeviceName}"
+                                       FontSize="14"
+                                       FontWeight="Medium"/>
+                            <TextBlock Text="{Binding SelectedDeviceMac}"
+                                       FontSize="11"
+                                       Foreground="Gray"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Button Content="Change Device"
+                                    Command="{Binding ChangeDeviceCommand}"/>
+                            <Button Content="Disconnect Audio"
+                                    Command="{Binding DisconnectAudioCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Preferences Section -->
+                <Border BorderBrush="LightGray"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="15">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Preferences"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"/>
+
+                        <ToggleSwitch Content="Auto mode (webcam)"
+                                      IsChecked="{Binding DetectionEnabled}"/>
+                        <TextBlock Text="Automatically control Bluetooth based on webcam detection. Toggle with Ctrl+Alt+W."
+                                   FontSize="11"
+                                   Foreground="Gray"
+                                   Margin="28,0,0,0"/>
+
+                        <ToggleSwitch Content="Keybind enabled (Ctrl+Alt+C)"
+                                      IsChecked="{Binding KeybindEnabled}"/>
+                        <TextBlock Text="Allow manual audio toggle via keyboard shortcut."
+                                   FontSize="11"
+                                   Foreground="Gray"
+                                   Margin="28,0,0,0"/>
+
+                        <!-- Theme Selection -->
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="Theme" Width="120" VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding ThemeOptions}"
+                                      SelectedItem="{Binding SelectedTheme}"
+                                      MinWidth="160"/>
+                        </StackPanel>
+                        <TextBlock Text="Choose Auto to follow system light/dark mode."
+                                   FontSize="11"
+                                   Foreground="Gray"
+                                   Margin="28,0,0,0"/>
+
+                        <!-- Webcam Selection -->
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="Webcam" Width="120" VerticalAlignment="Center"/>
+                            <ComboBox ItemsSource="{Binding AvailableWebcams}"
+                                      SelectedItem="{Binding SelectedWebcam}"
+                                      MinWidth="160">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                        <TextBlock Text="Select which webcam to use for detection."
+                                   FontSize="11"
+                                   Foreground="Gray"
+                                   Margin="28,0,0,0"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Status Message -->
+        <TextBlock Grid.Row="2"
+                   Text="{Binding StatusMessage}"
+                   FontSize="12"
+                   Foreground="Green"
+                   HorizontalAlignment="Center"
+                   Margin="0,10"/>
+
+        <!-- Action Buttons -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="10"
+                    Margin="0,10,0,0">
+            <Button Content="Save Settings"
+                    Command="{Binding SaveSettingsCommand}"/>
+            <Button Content="Close"
+                    Command="{Binding CloseCommand}"/>
+        </StackPanel>
+    </Grid>
+</Window>
+
+
+
