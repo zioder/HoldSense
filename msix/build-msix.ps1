@@ -12,16 +12,53 @@ Write-Host "Building HoldSense MSIX Package v$Version" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 # Check if makeappx is available
-$makeappx = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\makeappx.exe"
-if (-not (Test-Path $makeappx)) {
-    # Try to find it in the path
-    $makeappx = Get-Command makeappx.exe -ErrorAction SilentlyContinue
-    if (-not $makeappx) {
-        Write-Error "makeappx.exe not found. Please install Windows SDK."
-        Write-Host "Download from: https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/" -ForegroundColor Yellow
-        exit 1
+$makeappx = $null
+
+# Try to find makeappx in common locations
+$sdkPaths = @(
+    "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\makeappx.exe",
+    "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22000.0\x64\makeappx.exe",
+    "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\makeappx.exe"
+)
+
+# Try to find any SDK version dynamically
+$sdkBasePath = "C:\Program Files (x86)\Windows Kits\10\bin"
+if (Test-Path $sdkBasePath) {
+    $latestSdk = Get-ChildItem $sdkBasePath -Directory | 
+        Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } | 
+        Sort-Object Name -Descending | 
+        Select-Object -First 1
+    
+    if ($latestSdk) {
+        $sdkPaths += Join-Path $latestSdk.FullName "x64\makeappx.exe"
     }
-    $makeappx = $makeappx.Source
+}
+
+# Check each path
+foreach ($path in $sdkPaths) {
+    if (Test-Path $path) {
+        $makeappx = $path
+        break
+    }
+}
+
+# If not found in specific paths, try to find it in PATH
+if (-not $makeappx) {
+    $makeappxCmd = Get-Command makeappx.exe -ErrorAction SilentlyContinue
+    if ($makeappxCmd) {
+        $makeappx = $makeappxCmd.Source
+    }
+}
+
+# If still not found, fail with helpful message
+if (-not $makeappx) {
+    Write-Error "makeappx.exe not found. Please install Windows SDK."
+    Write-Host "Download from: https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/" -ForegroundColor Yellow
+    Write-Host "`nSearched locations:" -ForegroundColor Gray
+    foreach ($path in $sdkPaths) {
+        Write-Host "  - $path" -ForegroundColor Gray
+    }
+    exit 1
 }
 
 Write-Host "Using makeappx: $makeappx" -ForegroundColor Gray

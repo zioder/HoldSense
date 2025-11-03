@@ -122,6 +122,36 @@ jobs:
     - name: Build MSIX package
       shell: pwsh
       run: |
+        # Find makeappx.exe in Windows SDK
+        $sdkPath = "C:\Program Files (x86)\Windows Kits\10\bin"
+        
+        if (Test-Path $sdkPath) {
+          # Find the latest SDK version
+          $latestSdk = Get-ChildItem $sdkPath -Directory | 
+            Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } | 
+            Sort-Object Name -Descending | 
+            Select-Object -First 1
+          
+          if ($latestSdk) {
+            $makeappxPath = Join-Path $latestSdk.FullName "x64\makeappx.exe"
+            if (Test-Path $makeappxPath) {
+              Write-Host "Found Windows SDK at: $($latestSdk.FullName)"
+              $env:PATH = "$(Join-Path $latestSdk.FullName 'x64');$env:PATH"
+            }
+          }
+        }
+        
+        # Verify makeappx is available
+        $makeappx = Get-Command makeappx.exe -ErrorAction SilentlyContinue
+        if (-not $makeappx) {
+          Write-Warning "Windows SDK not found. Skipping MSIX build."
+          Write-Host "MSIX package will not be included in this release."
+          # Create empty msix_output directory to prevent later steps from failing
+          New-Item -ItemType Directory -Path msix_output -Force | Out-Null
+          exit 0
+        }
+        
+        Write-Host "Building MSIX package..."
         cd msix
         .\build-msix.ps1 -Version "${{ steps.get_version.outputs.VERSION_MSIX }}" -SourceDir "..\publish\HoldSense" -OutputDir "..\msix_output"
 
