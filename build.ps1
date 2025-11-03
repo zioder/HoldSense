@@ -21,6 +21,16 @@ if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
 if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
 if (Test-Path "publish") { Remove-Item -Recurse -Force "publish" }
 
+# Check if ONNX model exists, download if missing
+if (-not (Test-Path "yolov8n.onnx")) {
+    Write-Host "`nYOLOv8 model not found. Downloading..." -ForegroundColor Yellow
+    python download_model.py
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "Failed to download YOLOv8 model!"
+        exit 1
+    }
+}
+
 # Step 1: Build Python backend with PyInstaller
 Write-Host "`n[1/4] Building Python backend with PyInstaller..." -ForegroundColor Green
 

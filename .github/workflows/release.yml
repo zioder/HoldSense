@@ -40,6 +40,24 @@ jobs:
         python -m pip install -r requirements.txt
         python -m pip install pyinstaller
 
+    - name: Download YOLOv8 model
+      shell: pwsh
+      run: |
+        # Download the YOLOv8n ONNX model if it doesn't exist
+        if (-not (Test-Path "yolov8n.onnx")) {
+          Write-Host "Downloading YOLOv8n ONNX model..."
+          python -c "from ultralytics import YOLO; model = YOLO('yolov8n.pt'); model.export(format='onnx')"
+          
+          # Verify the file was created
+          if (-not (Test-Path "yolov8n.onnx")) {
+            Write-Error "Failed to download/export YOLOv8n ONNX model"
+            exit 1
+          }
+          Write-Host "YOLOv8n ONNX model downloaded successfully"
+        } else {
+          Write-Host "YOLOv8n ONNX model already exists"
+        }
+
     - name: Get version from tag or input
       id: get_version
       shell: pwsh

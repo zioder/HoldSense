@@ -90,7 +90,14 @@ If you want to build from source or contribute to development:
     ```
     The script uses `onnxruntime-directml` for GPU acceleration. If you encounter issues, you can switch to the CPU version by running: `pip install onnxruntime`.
 
-3.  **Run the Application**
+3.  **Download YOLOv8 Model**
+    The YOLOv8 model file is not included in the repository. Download it before running:
+    ```bash
+    python download_model.py
+    ```
+    This will download and export the YOLOv8n model to ONNX format (~6 MB). The build script will also automatically download it if missing.
+
+4.  **Run the Application**
     The application can be run directly via the .NET CLI.
     ```bash
     # Navigate to the C# project directory
@@ -100,7 +107,7 @@ If you want to build from source or contribute to development:
     dotnet run
     ```
 
-4.  **Build Distributable Package (Optional)**
+5.  **Build Distributable Package (Optional)**
     To create your own installer:
     ```powershell
     # Install PyInstaller
