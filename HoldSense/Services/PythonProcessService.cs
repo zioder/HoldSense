@@ -22,32 +22,25 @@ public class PythonProcessService
     {
         _configService = configService;
 
-        // Try multiple strategies to find main.py and .venv
+        // Try multiple strategies to find main.py/backend executable and .venv
         var exeDir = AppDomain.CurrentDomain.BaseDirectory;
         string? scriptPath = null;
         string? venvPython = null;
 
-        // Strategy 1: Check 4 levels up (for net8.0-windows Debug/Release builds)
-        var projectRoot = Directory.GetParent(exeDir)?.Parent?.Parent?.Parent?.FullName;
-        if (projectRoot != null)
+        // Strategy 0: Check for bundled backend (production/release builds)
+        // Look for backend/HoldSenseBackend.exe next to the main executable
+        var bundledBackendPath = Path.Combine(exeDir, "backend", "HoldSenseBackend.exe");
+        if (File.Exists(bundledBackendPath))
         {
-            var candidatePath = Path.Combine(projectRoot, "main.py");
-            if (File.Exists(candidatePath))
-            {
-                scriptPath = candidatePath;
-                // Check for .venv in the same directory
-                var venvPath = Path.Combine(projectRoot, ".venv", "Scripts", "python.exe");
-                if (File.Exists(venvPath))
-                {
-                    venvPython = venvPath;
-                }
-            }
+            scriptPath = bundledBackendPath;
+            // In production builds, Python is bundled so no need for venv
+            venvPython = null;
         }
 
-        // Strategy 2: Check 3 levels up (alternative structure)
+        // Strategy 1: Check 4 levels up (for net8.0-windows Debug/Release builds)
         if (scriptPath == null)
         {
-            projectRoot = Directory.GetParent(exeDir)?.Parent?.Parent?.FullName;
+            var projectRoot = Directory.GetParent(exeDir)?.Parent?.Parent?.Parent?.FullName;
             if (projectRoot != null)
             {
                 var candidatePath = Path.Combine(projectRoot, "main.py");
@@ -64,7 +57,27 @@ public class PythonProcessService
             }
         }
 
-        // Strategy 4: Check same directory as exe
+        // Strategy 2: Check 3 levels up (alternative structure)
+        if (scriptPath == null)
+        {
+            var projectRoot = Directory.GetParent(exeDir)?.Parent?.Parent?.FullName;
+            if (projectRoot != null)
+            {
+                var candidatePath = Path.Combine(projectRoot, "main.py");
+                if (File.Exists(candidatePath))
+                {
+                    scriptPath = candidatePath;
+                    // Check for .venv in the same directory
+                    var venvPath = Path.Combine(projectRoot, ".venv", "Scripts", "python.exe");
+                    if (File.Exists(venvPath))
+                    {
+                        venvPython = venvPath;
+                    }
+                }
+            }
+        }
+
+        // Strategy 3: Check same directory as exe
         if (scriptPath == null)
         {
             var candidatePath = Path.Combine(exeDir, "main.py");
@@ -80,7 +93,7 @@ public class PythonProcessService
             }
         }
 
-        // Strategy 5: Check parent of exe directory
+        // Strategy 4: Check parent of exe directory
         if (scriptPath == null)
         {
             var parentDir = Directory.GetParent(exeDir)?.FullName;
@@ -100,10 +113,10 @@ public class PythonProcessService
             }
         }
 
-        // Strategy 3: Check 5 levels up (for exe in subproject directory)
+        // Strategy 5: Check 5 levels up (for exe in subproject directory)
         if (scriptPath == null)
         {
-            projectRoot = Directory.GetParent(exeDir)?.Parent?.Parent?.Parent?.Parent?.FullName;
+            var projectRoot = Directory.GetParent(exeDir)?.Parent?.Parent?.Parent?.Parent?.FullName;
             if (projectRoot != null)
             {
                 var candidatePath = Path.Combine(projectRoot, "main.py");
@@ -147,40 +160,63 @@ public class PythonProcessService
         {
             var config = await _configService.LoadConfigAsync();
             
-            // Prioritize .venv Python, then config, then system Python
-            string pythonExe;
-            if (!string.IsNullOrEmpty(_venvPythonPath) && File.Exists(_venvPythonPath))
-            {
-                pythonExe = _venvPythonPath;
-            }
-            else if (!string.IsNullOrEmpty(config?.PythonExePath))
-            {
-                pythonExe = config.PythonExePath;
-            }
-            else
-            {
-                pythonExe = "python";
-            }
-
-            // Ensure the path is properly quoted and escaped
-            var scriptPathQuoted = $"\"{_pythonScriptPath}\"";
             var workingDir = Path.GetDirectoryName(_pythonScriptPath);
             if (string.IsNullOrEmpty(workingDir))
             {
                 workingDir = Environment.CurrentDirectory;
             }
 
-            var startInfo = new ProcessStartInfo
+            ProcessStartInfo startInfo;
+            
+            // Check if we're using the bundled backend (executable) or Python script
+            if (_pythonScriptPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
             {
-                FileName = pythonExe,
-                Arguments = $"{scriptPathQuoted} --no-ui",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                CreateNoWindow = true,
-                WorkingDirectory = workingDir
-            };
+                // Bundled backend - run directly without Python
+                startInfo = new ProcessStartInfo
+                {
+                    FileName = _pythonScriptPath,
+                    Arguments = "--no-ui",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    RedirectStandardInput = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = workingDir
+                };
+            }
+            else
+            {
+                // Python script - need Python interpreter
+                // Prioritize .venv Python, then config, then system Python
+                string pythonExe;
+                if (!string.IsNullOrEmpty(_venvPythonPath) && File.Exists(_venvPythonPath))
+                {
+                    pythonExe = _venvPythonPath;
+                }
+                else if (!string.IsNullOrEmpty(config?.PythonExePath))
+                {
+                    pythonExe = config.PythonExePath;
+                }
+                else
+                {
+                    pythonExe = "python";
+                }
+
+                // Ensure the path is properly quoted and escaped
+                var scriptPathQuoted = $"\"{_pythonScriptPath}\"";
+
+                startInfo = new ProcessStartInfo
+                {
+                    FileName = pythonExe,
+                    Arguments = $"{scriptPathQuoted} --no-ui",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    RedirectStandardInput = true,
+                    CreateNoWindow = true,
+                    WorkingDirectory = workingDir
+                };
+            }
 
             _pythonProcess = new Process { StartInfo = startInfo };
 

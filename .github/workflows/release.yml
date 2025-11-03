@@ -1,0 +1,185 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0
+  workflow_dispatch:  # Allows manual triggering
+    inputs:
+      version:
+        description: 'Version number (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+        cache: 'pip'
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install -r requirements.txt
+        python -m pip install pyinstaller
+
+    - name: Get version from tag or input
+      id: get_version
+      shell: pwsh
+      run: |
+        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          $version = "${{ github.event.inputs.version }}"
+        } else {
+          $version = "${{ github.ref }}" -replace 'refs/tags/v', ''
+        }
+        echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+        echo "VERSION_MSIX=$version.0" >> $env:GITHUB_OUTPUT
+        echo "Building version: $version"
+
+    - name: Build application
+      shell: pwsh
+      run: |
+        .\build.ps1 -Version "${{ steps.get_version.outputs.VERSION }}" -Configuration Release -Runtime win-x64
+
+    - name: Verify build output
+      shell: pwsh
+      run: |
+        if (-not (Test-Path "publish/HoldSense/HoldSense.exe")) {
+          Write-Error "Build failed: HoldSense.exe not found"
+          exit 1
+        }
+        if (-not (Test-Path "publish/HoldSense/backend/HoldSenseBackend.exe")) {
+          Write-Error "Build failed: Backend executable not found"
+          exit 1
+        }
+        Write-Host "Build verification passed!"
+
+    - name: Create portable ZIP
+      shell: pwsh
+      run: |
+        Compress-Archive -Path "publish/HoldSense/*" -DestinationPath "HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip"
+
+    - name: Setup Inno Setup
+      run: |
+        choco install innosetup -y
+
+    - name: Build EXE installer
+      shell: pwsh
+      run: |
+        $env:PATH = "C:\Program Files (x86)\Inno Setup 6;$env:PATH"
+        
+        # Update version in installer script
+        $issContent = Get-Content installer.iss -Raw
+        $issContent = $issContent -replace '#define MyAppVersion "[^"]*"', "#define MyAppVersion `"${{ steps.get_version.outputs.VERSION }}`""
+        $issContent | Out-File installer_temp.iss -Encoding UTF8
+        
+        # Compile installer
+        iscc installer_temp.iss
+        
+        # Check if installer was created
+        if (Test-Path "installer_output/HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe") {
+          Write-Host "Installer created successfully!"
+        } else {
+          Write-Error "Installer creation failed!"
+          exit 1
+        }
+
+    - name: Build MSIX package
+      shell: pwsh
+      run: |
+        cd msix
+        .\build-msix.ps1 -Version "${{ steps.get_version.outputs.VERSION_MSIX }}" -SourceDir "..\publish\HoldSense" -OutputDir "..\msix_output"
+
+    # Optional: Sign the MSIX (requires certificate)
+    # - name: Sign MSIX
+    #   if: ${{ secrets.SIGNING_CERTIFICATE != '' }}
+    #   shell: pwsh
+    #   run: |
+    #     # Decode certificate from base64
+    #     $certBytes = [System.Convert]::FromBase64String("${{ secrets.SIGNING_CERTIFICATE }}")
+    #     [IO.File]::WriteAllBytes("cert.pfx", $certBytes)
+    #     
+    #     # Sign the package
+    #     & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign `
+    #       /fd SHA256 /a /f cert.pfx /p "${{ secrets.CERTIFICATE_PASSWORD }}" `
+    #       "msix_output\HoldSense_${{ steps.get_version.outputs.VERSION_MSIX }}.msix"
+    #     
+    #     Remove-Item cert.pfx
+
+    - name: Create Release
+      id: create_release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name || format('v{0}', steps.get_version.outputs.VERSION) }}
+        name: HoldSense v${{ steps.get_version.outputs.VERSION }}
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+        files: |
+          HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip
+          installer_output/HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe
+          msix_output/*.msix
+        body: |
+          ## HoldSense v${{ steps.get_version.outputs.VERSION }}
+          
+          ### 📦 Installation Options
+          
+          1. **EXE Installer (Recommended)**: `HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe`
+             - Full installer with shortcuts and uninstaller
+             - Optionally starts on Windows startup
+          
+          2. **MSIX Package**: `HoldSense_${{ steps.get_version.outputs.VERSION_MSIX }}.msix`
+             - Modern Windows package format
+             - Requires Windows 10 version 2004+ (build 19041)
+             - **Note**: Unsigned MSIX requires developer mode or certificate installation
+          
+          3. **Portable ZIP**: `HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip`
+             - No installation required
+             - Extract and run HoldSense.exe
+          
+          ### 📋 Requirements
+          - Windows 10 version 2004 (build 19041) or newer
+          - Bluetooth-enabled PC with paired audio device
+          - Webcam for automatic detection
+          
+          ### 🔧 What's Included
+          - HoldSense application with Python backend bundled
+          - YOLOv8 phone detection model
+          - All dependencies included (no Python installation needed)
+          
+          ### ⚠️ MSIX Installation Note
+          The MSIX package is unsigned in this automated build. To install:
+          - Enable Developer Mode in Windows Settings, OR
+          - Double-click the MSIX and click "Install anyway" if prompted
+          
+          For production deployments, the MSIX should be code-signed with a trusted certificate.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: HoldSense-v${{ steps.get_version.outputs.VERSION }}
+        path: |
+          HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip
+          installer_output/*.exe
+          msix_output/*.msix
+        retention-days: 30
+

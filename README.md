@@ -37,16 +37,40 @@ HoldSense is a hybrid application combining a C# GUI with a Python backend for c
 
 This architecture allows for a responsive and modern user interface while leveraging the powerful libraries available in the Python ecosystem for machine learning and hardware interaction.
 
-## Installation and Setup
+## Installation
 
-### Prerequisites
+### Option 1: Download Pre-built Release (Recommended)
+
+The easiest way to get HoldSense is to download a pre-built release. No Python or .NET installation required!
+
+1. **Go to [Releases](https://github.com/zioder/HoldSense/releases)**
+2. **Download one of these packages:**
+   - **`HoldSense-Setup-vX.X.X.exe`** - Full installer (recommended)
+   - **`HoldSense_X_X_X_X.msix`** - Modern Windows package
+   - **`HoldSense-Portable-vX.X.X.zip`** - Portable version (no installation)
+
+3. **Install and run:**
+   - **EXE**: Double-click to install. If Windows shows a security warning, click "More info" → "Run anyway"
+   - **MSIX**: Double-click to install. Enable Developer Mode if prompted
+   - **Portable**: Extract the ZIP and run `HoldSense.exe`
+
+**System Requirements:**
+- Windows 10 version 2004 (build 19041) or newer
+- Bluetooth-enabled PC with paired audio device
+- Webcam for automatic phone detection
+
+### Option 2: Build from Source (Development)
+
+If you want to build from source or contribute to development:
+
+#### Prerequisites
 
 - **Windows 10** (version 2004 or newer)
-- **.NET 8 SDK** (or a compatible runtime)
-- **Python 3.x**
-- A Bluetooth-enabled PC and a phone/audio device already paired with Windows.
+- **.NET 8 SDK**
+- **Python 3.11+**
+- A Bluetooth-enabled PC and a phone/audio device already paired with Windows
 
-### Steps
+#### Steps
 
 1.  **Clone the Repository**
     ```bash
@@ -57,13 +81,17 @@ This architecture allows for a responsive and modern user interface while levera
 2.  **Install Python Dependencies**
     A virtual environment is recommended.
     ```bash
+    # Create and activate virtual environment (optional but recommended)
+    python -m venv .venv
+    .venv\Scripts\activate
+
     # Install the required packages
     pip install -r requirements.txt
     ```
     The script uses `onnxruntime-directml` for GPU acceleration. If you encounter issues, you can switch to the CPU version by running: `pip install onnxruntime`.
 
-3.  **Build and Run the Application**
-    The application can be run directly via the .NET CLI or by building the executable.
+3.  **Run the Application**
+    The application can be run directly via the .NET CLI.
     ```bash
     # Navigate to the C# project directory
     cd HoldSense
@@ -71,7 +99,18 @@ This architecture allows for a responsive and modern user interface while levera
     # Run the application
     dotnet run
     ```
-    Alternatively, build the project (`dotnet build`) and run the executable from the `bin/` directory.
+
+4.  **Build Distributable Package (Optional)**
+    To create your own installer:
+    ```powershell
+    # Install PyInstaller
+    pip install pyinstaller
+
+    # Build everything (at repository root)
+    .\build.ps1 -Version "1.0.0"
+    ```
+    
+    See `QUICKSTART.md` for detailed build and release instructions.
 
 ## Usage Guide
 
@@ -117,3 +156,62 @@ The application stores your preferences in a `bt_config.json` file in the same d
   "theme": "auto",
   "webcam_index": 0
 }
+```
+
+## Building and Releasing
+
+### For Developers
+
+If you're contributing to HoldSense or want to create your own builds:
+
+- **Quick Start**: See [`QUICKSTART.md`](QUICKSTART.md) for a fast guide to creating releases
+- **Detailed Guide**: See [`RELEASE_GUIDE.md`](RELEASE_GUIDE.md) for comprehensive build and release documentation
+- **Technical Details**: See [`BUILD_AND_RELEASE_SUMMARY.md`](BUILD_AND_RELEASE_SUMMARY.md) for architecture overview
+
+### Creating a Release
+
+The easiest way to create a new release is via GitHub Actions:
+
+```bash
+# Commit your changes
+git add .
+git commit -m "Release v1.0.0"
+git push origin main
+
+# Create and push a version tag
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+GitHub Actions will automatically build:
+- 📦 Windows EXE installer
+- 📦 MSIX package  
+- 📦 Portable ZIP version
+
+All with Python and dependencies fully bundled - no external installations required!
+
+## Contributing
+
+Contributions are welcome! Whether it's bug fixes, new features, or documentation improvements:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the [`LICENSE`](LICENSE) file for details.
+
+## Support
+
+- 🐛 **Bug Reports**: [Open an issue](https://github.com/zioder/HoldSense/issues)
+- 💡 **Feature Requests**: [Start a discussion](https://github.com/zioder/HoldSense/discussions)
+- ☕ **Support Development**: [Buy me a coffee](https://www.buymeacoffee.com/zioder)
+
+## Acknowledgments
+
+- YOLOv8 for phone detection
+- Avalonia UI for the cross-platform UI framework
+- The Python and .NET communities for excellent tools and libraries

@@ -42,11 +42,15 @@ MANIFEST
 
 # PyInstaller
 *.manifest
-*.spec
+# Keep main.spec for build process
+!main.spec
 
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt
+QUICKSTART.md
+RELEASE_GUIDE.md
+BUILD_AND_RELEASE_SUMMARY.md
 
 # Unit test / coverage reports
 htmlcov/
@@ -246,8 +250,11 @@ DocProject/Help/*.hhp
 DocProject/Help/Html2
 DocProject/Help/html
 
-# Click-Once directory
+# Click-Once directory and build output
 publish/
+installer_output/
+msix_output/
+installer_temp.iss
 
 # Publish Web Output
 *.[Pp]ublish.xml

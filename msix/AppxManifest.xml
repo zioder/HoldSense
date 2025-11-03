@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+         IgnorableNamespaces="uap rescap desktop">
+
+  <Identity Name="Zioder.HoldSense"
+            Publisher="CN=Zioder"
+            Version="1.0.0.0" />
+
+  <Properties>
+    <DisplayName>HoldSense</DisplayName>
+    <PublisherDisplayName>Zioder</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <Description>Smart Windows utility for seamless Bluetooth audio switching using phone presence detection</Description>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.22621.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us"/>
+  </Resources>
+
+  <Applications>
+    <Application Id="HoldSense" Executable="HoldSense.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="HoldSense"
+        Description="Smart Bluetooth audio switching using phone detection"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+      
+      <Extensions>
+        <desktop:Extension Category="windows.startupTask" Executable="HoldSense.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="HoldSenseStartup" Enabled="false" DisplayName="HoldSense" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    <Capability Name="internetClient" />
+    <DeviceCapability Name="webcam" />
+    <DeviceCapability Name="bluetooth" />
+  </Capabilities>
+</Package>
+
