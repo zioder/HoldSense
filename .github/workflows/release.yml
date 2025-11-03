@@ -119,57 +119,7 @@ jobs:
           exit 1
         }
 
-    - name: Build MSIX package
-      shell: pwsh
-      run: |
-        # Find makeappx.exe in Windows SDK
-        $sdkPath = "C:\Program Files (x86)\Windows Kits\10\bin"
-        
-        if (Test-Path $sdkPath) {
-          # Find the latest SDK version
-          $latestSdk = Get-ChildItem $sdkPath -Directory | 
-            Where-Object { $_.Name -match '^\d+\.\d+\.\d+\.\d+$' } | 
-            Sort-Object Name -Descending | 
-            Select-Object -First 1
-          
-          if ($latestSdk) {
-            $makeappxPath = Join-Path $latestSdk.FullName "x64\makeappx.exe"
-            if (Test-Path $makeappxPath) {
-              Write-Host "Found Windows SDK at: $($latestSdk.FullName)"
-              $env:PATH = "$(Join-Path $latestSdk.FullName 'x64');$env:PATH"
-            }
-          }
-        }
-        
-        # Verify makeappx is available
-        $makeappx = Get-Command makeappx.exe -ErrorAction SilentlyContinue
-        if (-not $makeappx) {
-          Write-Warning "Windows SDK not found. Skipping MSIX build."
-          Write-Host "MSIX package will not be included in this release."
-          # Create empty msix_output directory to prevent later steps from failing
-          New-Item -ItemType Directory -Path msix_output -Force | Out-Null
-          exit 0
-        }
-        
-        Write-Host "Building MSIX package..."
-        cd msix
-        .\build-msix.ps1 -Version "${{ steps.get_version.outputs.VERSION_MSIX }}" -SourceDir "..\publish\HoldSense" -OutputDir "..\msix_output"
-
-    # Optional: Sign the MSIX (requires certificate)
-    # - name: Sign MSIX
-    #   if: ${{ secrets.SIGNING_CERTIFICATE != '' }}
-    #   shell: pwsh
-    #   run: |
-    #     # Decode certificate from base64
-    #     $certBytes = [System.Convert]::FromBase64String("${{ secrets.SIGNING_CERTIFICATE }}")
-    #     [IO.File]::WriteAllBytes("cert.pfx", $certBytes)
-    #     
-    #     # Sign the package
-    #     & "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtool.exe" sign `
-    #       /fd SHA256 /a /f cert.pfx /p "${{ secrets.CERTIFICATE_PASSWORD }}" `
-    #       "msix_output\HoldSense_${{ steps.get_version.outputs.VERSION_MSIX }}.msix"
-    #     
-    #     Remove-Item cert.pfx
+    # MSIX packaging temporarily disabled per request
 
     - name: Create Release
       id: create_release
@@ -180,25 +130,19 @@ jobs:
         draft: false
         prerelease: false
         generate_release_notes: true
-        files: |
-          HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip
-          installer_output/HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe
-          msix_output/*.msix
+      files: |
+       HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip
+       installer_output/HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe
         body: |
           ## HoldSense v${{ steps.get_version.outputs.VERSION }}
           
           ### 📦 Installation Options
           
-          1. **EXE Installer (Recommended)**: `HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe`
+       1. **EXE Installer (Recommended)**: `HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe`
              - Full installer with shortcuts and uninstaller
              - Optionally starts on Windows startup
           
-          2. **MSIX Package**: `HoldSense_${{ steps.get_version.outputs.VERSION_MSIX }}.msix`
-             - Modern Windows package format
-             - Requires Windows 10 version 2004+ (build 19041)
-             - **Note**: Unsigned MSIX requires developer mode or certificate installation
-          
-          3. **Portable ZIP**: `HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip`
+       2. **Portable ZIP**: `HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip`
              - No installation required
              - Extract and run HoldSense.exe
           
@@ -212,12 +156,6 @@ jobs:
           - YOLOv8 phone detection model
           - All dependencies included (no Python installation needed)
           
-          ### ⚠️ MSIX Installation Note
-          The MSIX package is unsigned in this automated build. To install:
-          - Enable Developer Mode in Windows Settings, OR
-          - Double-click the MSIX and click "Install anyway" if prompted
-          
-          For production deployments, the MSIX should be code-signed with a trusted certificate.
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -228,6 +166,5 @@ jobs:
         path: |
           HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip
           installer_output/*.exe
-          msix_output/*.msix
         retention-days: 30
 
