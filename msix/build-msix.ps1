@@ -63,13 +63,33 @@ if (-not $makeappx) {
 
 Write-Host "Using makeappx: $makeappx" -ForegroundColor Gray
 
+# Resolve script root and normalize paths to be robust regardless of current directory
+$ScriptRoot = $PSScriptRoot
+if (-not $ScriptRoot) {
+    $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+
+# Resolve SourceDir to absolute path
+try {
+    $SourceDir = (Resolve-Path -LiteralPath $SourceDir).Path
+} catch {
+    Write-Error "Source directory not found: $SourceDir"
+    exit 1
+}
+
+# Ensure OutputDir exists and resolve to absolute path
+if (-not (Test-Path -LiteralPath $OutputDir)) {
+    New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
+}
+$OutputDir = (Resolve-Path -LiteralPath $OutputDir).Path
+
 # Create output directory
 if (-not (Test-Path $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir | Out-Null
 }
 
-# Create staging directory
-$stagingDir = "staging"
+# Create staging directory under the script folder to avoid cwd issues
+$stagingDir = Join-Path $ScriptRoot "staging"
 if (Test-Path $stagingDir) {
     Remove-Item -Recurse -Force $stagingDir
 }
@@ -83,33 +103,38 @@ Copy-Item -Recurse "$SourceDir\*" "$stagingDir\" -Force
 
 # Copy and update manifest
 Write-Host "Updating manifest version to $Version..."
-$manifestContent = Get-Content "AppxManifest.xml" -Raw
+$manifestPath = Join-Path $ScriptRoot "AppxManifest.xml"
+if (-not (Test-Path -LiteralPath $manifestPath)) {
+    Write-Error "AppxManifest.xml not found at $manifestPath"
+    exit 1
+}
+$manifestContent = Get-Content $manifestPath -Raw
 $manifestContent = $manifestContent -replace 'Version="[^"]*"', "Version=`"$Version`""
 # Use UTF8 without BOM to preserve XML declaration
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::WriteAllText("$stagingDir\AppxManifest.xml", $manifestContent, $utf8NoBom)
+[System.IO.File]::WriteAllText((Join-Path $stagingDir "AppxManifest.xml"), $manifestContent, $utf8NoBom)
 
 # Create Assets folder and copy icons
 Write-Host "Preparing assets..."
-if (-not (Test-Path "$stagingDir\Assets")) {
-    New-Item -ItemType Directory -Path "$stagingDir\Assets" | Out-Null
+if (-not (Test-Path (Join-Path $stagingDir "Assets"))) {
+    New-Item -ItemType Directory -Path (Join-Path $stagingDir "Assets") | Out-Null
 }
 
 # Check if assets exist, if not, copy from app icon
-$appIcon = "$SourceDir\HoldSense.ico"
+$appIcon = Join-Path $SourceDir "HoldSense.ico"
 if (Test-Path $appIcon) {
     # For now, copy the .ico as placeholders
     # In production, you should create proper PNG assets at the required sizes
-    Copy-Item $appIcon "$stagingDir\Assets\StoreLogo.png" -Force -ErrorAction SilentlyContinue
-    Copy-Item $appIcon "$stagingDir\Assets\Square44x44Logo.png" -Force -ErrorAction SilentlyContinue
-    Copy-Item $appIcon "$stagingDir\Assets\Square150x150Logo.png" -Force -ErrorAction SilentlyContinue
-    Copy-Item $appIcon "$stagingDir\Assets\Wide310x150Logo.png" -Force -ErrorAction SilentlyContinue
-    Copy-Item $appIcon "$stagingDir\Assets\SplashScreen.png" -Force -ErrorAction SilentlyContinue
+    Copy-Item $appIcon (Join-Path $stagingDir "Assets\StoreLogo.png") -Force -ErrorAction SilentlyContinue
+    Copy-Item $appIcon (Join-Path $stagingDir "Assets\Square44x44Logo.png") -Force -ErrorAction SilentlyContinue
+    Copy-Item $appIcon (Join-Path $stagingDir "Assets\Square150x150Logo.png") -Force -ErrorAction SilentlyContinue
+    Copy-Item $appIcon (Join-Path $stagingDir "Assets\Wide310x150Logo.png") -Force -ErrorAction SilentlyContinue
+    Copy-Item $appIcon (Join-Path $stagingDir "Assets\SplashScreen.png") -Force -ErrorAction SilentlyContinue
 }
 
 # Copy custom assets if they exist in msix/Assets folder
-if (Test-Path "Assets") {
-    Copy-Item "Assets\*" "$stagingDir\Assets\" -Force -ErrorAction SilentlyContinue
+if (Test-Path (Join-Path $ScriptRoot "Assets")) {
+    Copy-Item (Join-Path $ScriptRoot "Assets\*") (Join-Path $stagingDir "Assets\") -Force -ErrorAction SilentlyContinue
 }
 
 # Create the MSIX package
