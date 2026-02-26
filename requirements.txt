@@ -1,9 +1,0 @@
-opencv-python
-numpy<2.3.0,>=2
-protobuf<5,>=4.25.3
-onnx
-winsdk
-ultralytics
-onnxruntime-directml
-pystray
-Pillow

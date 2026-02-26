@@ -47,6 +47,10 @@ MANIFEST
 # Keep app.manifest for C# project
 !HoldSense/app.manifest
 
+# YOLO PyTorch weights - only ONNX needed at runtime
+# Download via: python download_model.py
+*.pt
+
 # Installer logs
 pip-log.txt
 pip-delete-this-directory.txt

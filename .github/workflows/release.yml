@@ -13,7 +13,6 @@ on:
 
 env:
   DOTNET_VERSION: '8.0.x'
-  PYTHON_VERSION: '3.11'
 
 jobs:
   build:
@@ -27,36 +26,6 @@ jobs:
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: Setup Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
-        cache: 'pip'
-
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install -r requirements.txt
-        python -m pip install pyinstaller
-
-    - name: Download YOLOv8 model
-      shell: pwsh
-      run: |
-        # Download the YOLOv8n ONNX model if it doesn't exist
-        if (-not (Test-Path "yolov8n.onnx")) {
-          Write-Host "Downloading YOLOv8n ONNX model..."
-          python -c "from ultralytics import YOLO; model = YOLO('yolov8n.pt'); model.export(format='onnx')"
-          
-          # Verify the file was created
-          if (-not (Test-Path "yolov8n.onnx")) {
-            Write-Error "Failed to download/export YOLOv8n ONNX model"
-            exit 1
-          }
-          Write-Host "YOLOv8n ONNX model downloaded successfully"
-        } else {
-          Write-Host "YOLOv8n ONNX model already exists"
-        }
 
     - name: Get version from tag or input
       id: get_version
@@ -81,10 +50,6 @@ jobs:
       run: |
         if (-not (Test-Path "publish/HoldSense/HoldSense.exe")) {
           Write-Error "Build failed: HoldSense.exe not found"
-          exit 1
-        }
-        if (-not (Test-Path "publish/HoldSense/backend/HoldSenseBackend.exe")) {
-          Write-Error "Build failed: Backend executable not found"
           exit 1
         }
         Write-Host "Build verification passed!"
@@ -130,32 +95,31 @@ jobs:
         draft: false
         prerelease: false
         generate_release_notes: true
-      files: |
-       HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip
-       installer_output/HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe
         body: |
           ## HoldSense v${{ steps.get_version.outputs.VERSION }}
           
           ### 📦 Installation Options
           
-       1. **EXE Installer (Recommended)**: `HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe`
+          1. **EXE Installer (Recommended)**: `HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe`
              - Full installer with shortcuts and uninstaller
              - Optionally starts on Windows startup
           
-       2. **Portable ZIP**: `HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip`
+          2. **Portable ZIP**: `HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip`
              - No installation required
              - Extract and run HoldSense.exe
           
           ### 📋 Requirements
           - Windows 10 version 2004 (build 19041) or newer
           - Bluetooth-enabled PC with paired audio device
-          - Webcam for automatic detection
+          - Webcam for automatic phone detection (optional)
           
           ### 🔧 What's Included
-          - HoldSense application with Python backend bundled
-          - YOLOv8 phone detection model
-          - All dependencies included (no Python installation needed)
-          
+          - HoldSense application with in-process .NET runtime
+          - Optional ONNX phone detection model (for auto mode)
+          - All dependencies included - no separate installs needed
+        files: |
+          HoldSense-Portable-v${{ steps.get_version.outputs.VERSION }}.zip
+          installer_output/HoldSense-Setup-v${{ steps.get_version.outputs.VERSION }}.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

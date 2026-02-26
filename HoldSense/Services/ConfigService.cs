@@ -18,6 +18,8 @@ public class ConfigService
         _configPath = Path.Combine(exeDir, ConfigFileName);
     }
 
+    public string ConfigPath => _configPath;
+
     public async Task<AppConfig?> LoadConfigAsync()
     {
         try
@@ -26,7 +28,8 @@ public class ConfigService
                 return null;
 
             var json = await File.ReadAllTextAsync(_configPath);
-            return JsonSerializer.Deserialize<AppConfig>(json);
+            // Use the source-generated context for trimming support
+            return JsonSerializer.Deserialize(json, AppConfigJsonContext.Default.AppConfig);
         }
         catch (Exception)
         {
@@ -38,13 +41,8 @@ public class ConfigService
     {
         try
         {
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-            };
-
-            var json = JsonSerializer.Serialize(config, options);
+            // Use the source-generated context for trimming support
+            var json = JsonSerializer.Serialize(config, AppConfigJsonContext.Default.AppConfig);
             await File.WriteAllTextAsync(_configPath, json);
         }
         catch (Exception)
@@ -58,6 +56,5 @@ public class ConfigService
         return File.Exists(_configPath);
     }
 }
-
 
 

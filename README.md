@@ -12,30 +12,27 @@ The application runs quietly in the system tray, offering a modern GUI for confi
 
 ## Key Features
 
-- **Automatic Audio Switching**: Uses a YOLOv8 model to detect your phone via webcam and automatically manages your Bluetooth A2DP audio connection.
-- **Unified Application**: A C# Avalonia frontend provides a clean user interface, while a Python backend handles detection and audio control.
+- **Automatic Audio Switching**: Uses a YOLOv26 model to detect your phone via webcam and automatically manages your Bluetooth A2DP audio connection.
+- **Unified Application**: A C# WinUI 3 frontend with an in-process .NET runtime handles detection, Bluetooth control, tray state, and hotkeys.
 - **System Tray Integration**: Hides neatly in the system tray with a menu for quick actions, ensuring it stays out of your way.
 - **Global Hotkeys**:
     - `Ctrl+Alt+W`: Toggle the webcam detection on or off to save resources.
     - `Ctrl+Alt+C`: Manually connect or disconnect the Bluetooth audio link.
 - **Settings UI**: An intuitive settings panel to change your Bluetooth device, select a webcam, enable/disable modes, and customize the theme.
 - **Efficient & Modern**:
-    - Detection is powered by an ONNX-exported YOLOv8 model, running on the GPU via `onnxruntime-directml` for high performance.
-    - Audio control is handled natively using the Windows SDK (`winsdk`), eliminating the need for external executables.
+    - Detection is powered by an ONNX YOLO model via `Microsoft.ML.OnnxRuntime.DirectML` + `OpenCvSharp4`.
+    - Audio control is handled in-process using Windows `AudioPlaybackConnection` APIs.
 
 ## How It Works
 
-HoldSense is a hybrid application combining a C# GUI with a Python backend for core functionality.
+HoldSense runs as a single WinUI 3 + .NET process.
 
-1.  **GUI (C# Avalonia)**: The main executable you run. It provides the setup wizard, main window, settings panel, and the unified system tray icon.
-2.  **Backend (Python)**: The C# application launches the `main.py` script in the background. This script is responsible for:
-    - Accessing the webcam feed via OpenCV.
-    - Running the YOLOv8 phone detection model.
-    - Managing the Bluetooth A2DP connection using the Windows SDK.
-    - Listening for global hotkeys.
-3.  **Communication**: The C# GUI and Python backend communicate through the standard input/output streams. The GUI sends commands (e.g., `toggle_detection`) to Python's `stdin`, and Python reports its status (e.g., `STATUS:audio_active:true`) back to the GUI via `stdout`.
-
-This architecture allows for a responsive and modern user interface while leveraging the powerful libraries available in the Python ecosystem for machine learning and hardware interaction.
+1. **UI Layer (WinUI 3)**: Main window, settings, and tray integration.
+2. **Runtime Layer (C# services)**:
+   - Webcam capture via OpenCvSharp.
+   - ONNX detection via OnnxRuntime DirectML (with CPU fallback).
+   - Bluetooth A2DP connection control through `AudioPlaybackConnection`.
+   - Global hotkeys (`Ctrl+Alt+C`, `Ctrl+Alt+W`) via Win32 `RegisterHotKey`.
 
 ## Installation
 
@@ -67,7 +64,6 @@ If you want to build from source or contribute to development:
 
 - **Windows 10** (version 2004 or newer)
 - **.NET 8 SDK**
-- **Python 3.11+**
 - A Bluetooth-enabled PC and a phone/audio device already paired with Windows
 
 #### Steps
@@ -78,26 +74,7 @@ If you want to build from source or contribute to development:
     cd HoldSense
     ```
 
-2.  **Install Python Dependencies**
-    A virtual environment is recommended.
-    ```bash
-    # Create and activate virtual environment (optional but recommended)
-    python -m venv .venv
-    .venv\Scripts\activate
-
-    # Install the required packages
-    pip install -r requirements.txt
-    ```
-    The script uses `onnxruntime-directml` for GPU acceleration. If you encounter issues, you can switch to the CPU version by running: `pip install onnxruntime`.
-
-3.  **Download YOLOv8 Model**
-    The YOLOv8 model file is not included in the repository. Download it before running:
-    ```bash
-    python download_model.py
-    ```
-    This will download and export the YOLOv8n model to ONNX format (~6 MB). The build script will also automatically download it if missing.
-
-4.  **Run the Application**
+2.  **Run the Application**
     The application can be run directly via the .NET CLI.
     ```bash
     # Navigate to the C# project directory
@@ -107,12 +84,9 @@ If you want to build from source or contribute to development:
     dotnet run
     ```
 
-5.  **Build Distributable Package (Optional)**
+3.  **Build Distributable Package (Optional)**
     To create your own installer:
     ```powershell
-    # Install PyInstaller
-    pip install pyinstaller
-
     # Build everything (at repository root)
     .\build.ps1 -Version "1.0.0"
     ```
@@ -126,7 +100,7 @@ On the first launch, HoldSense will present a device selector. Choose your phone
 
 ### Main Window
 The main window provides a simple interface to start and stop the detection service and view the current status.
-- **Start/Stop Detection**: Manages the Python background process.
+- **Start/Stop Detection**: Starts/stops the in-process runtime listener.
 - **Settings Button**: Opens the detailed settings window.
 - **Status Panel**: Shows the configured device and whether detection is running.
 - Closing the window minimizes it to the system tray; it does not exit the application.
@@ -160,6 +134,8 @@ The application stores your preferences in a `bt_config.json` file in the same d
   "detection_enabled": false,
   "keybind_enabled": true,
   "python_exe_path": "",
+  "backend_mode": "dotnet",
+  "enable_python_fallback": false,
   "theme": "auto",
   "webcam_index": 0
 }
@@ -195,7 +171,7 @@ GitHub Actions will automatically build:
 - 📦 MSIX package  
 - 📦 Portable ZIP version
 
-All with Python and dependencies fully bundled - no external installations required!
+All with .NET runtime dependencies bundled - no external runtime installation required.
 
 ## Contributing
 
@@ -219,6 +195,6 @@ This project is licensed under the MIT License - see the [`LICENSE`](LICENSE) fi
 
 ## Acknowledgments
 
-- YOLOv8 for phone detection
+- YOLOv26 for phone detection
 - Avalonia UI for the cross-platform UI framework
 - The Python and .NET communities for excellent tools and libraries

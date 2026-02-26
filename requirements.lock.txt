@@ -1,0 +1,10 @@
+# HoldSense locked dependency set (direct dependencies)
+# Generated for reproducible installs on 2026-02-26.
+winsdk==1.0.0b10
+pystray==0.19.5
+Pillow==12.0.0
+opencv-python-headless==4.12.0.88
+numpy==2.2.6
+protobuf==4.25.8
+onnxruntime-directml==1.23.0
+ultralytics==8.3.223

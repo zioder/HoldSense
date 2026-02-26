@@ -11,6 +11,14 @@ namespace _HoldSense.Services;
 
 public class BluetoothService
 {
+    private static readonly Regex MacWithSeparatorsRegex = new(
+        @"(?<![0-9A-Fa-f])(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f])",
+        RegexOptions.Compiled);
+
+    private static readonly Regex MacCompactRegex = new(
+        @"(?:#|_Dev_)([0-9A-Fa-f]{12})(?=[_#&\\]|$)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
     public async Task<List<BluetoothDevice>> EnumerateA2dpDevicesAsync()
     {
         try
@@ -21,22 +29,37 @@ public class BluetoothService
             }
 
             var selector = AudioPlaybackConnection.GetDeviceSelector();
-            var devices = await DeviceInformation.FindAllAsync(selector);
+            var requestedProperties = new[]
+            {
+                "System.Devices.Aep.DeviceAddress"
+            };
+            var devices = await DeviceInformation.FindAllAsync(selector, requestedProperties);
 
             var results = new List<BluetoothDevice>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var device in devices)
             {
-                var mac = ExtractMacFromDeviceId(device.Id);
-                if (!string.IsNullOrEmpty(mac))
+                if (string.IsNullOrWhiteSpace(device.Id))
                 {
-                    results.Add(new BluetoothDevice
-                    {
-                        Name = device.Name ?? "(Unknown)",
-                        MacAddress = mac,
-                        DeviceId = device.Id
-                    });
+                    continue;
                 }
+
+                var identifier = ExtractMacFromDeviceId(device.Id)
+                    ?? ExtractMacFromProperties(device)
+                    ?? device.Id;
+
+                if (!seen.Add(identifier))
+                {
+                    continue;
+                }
+
+                results.Add(new BluetoothDevice
+                {
+                    Name = string.IsNullOrWhiteSpace(device.Name) ? "(Unknown)" : device.Name,
+                    MacAddress = identifier,
+                    DeviceId = device.Id
+                });
             }
 
             return results;
@@ -47,25 +70,63 @@ public class BluetoothService
         }
     }
 
-    private string? ExtractMacFromDeviceId(string deviceId)
+    private static string? ExtractMacFromDeviceId(string deviceId)
     {
         if (string.IsNullOrEmpty(deviceId))
             return null;
 
-        // Search for a 12-character hexadecimal string (MAC address format in device IDs)
-        var match = Regex.Match(deviceId, @"([0-9A-Fa-f]{12})");
-        if (match.Success)
+        var separated = MacWithSeparatorsRegex.Match(deviceId);
+        if (separated.Success)
         {
-            var macStr = match.Groups[1].Value;
-            // Format as XX:XX:XX:XX:XX:XX
-            return string.Join(":", Enumerable.Range(0, 6)
-                .Select(i => macStr.Substring(i * 2, 2)))
-                .ToUpper();
+            return NormalizeMac(separated.Value);
+        }
+
+        var compact = MacCompactRegex.Match(deviceId);
+        if (compact.Success)
+        {
+            return NormalizeMac(compact.Groups[1].Value);
         }
 
         return null;
     }
+
+    private static string? ExtractMacFromProperties(DeviceInformation device)
+    {
+        if (!device.Properties.TryGetValue("System.Devices.Aep.DeviceAddress", out var value) || value == null)
+        {
+            return null;
+        }
+
+        var text = value.ToString();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        var separated = MacWithSeparatorsRegex.Match(text);
+        if (separated.Success)
+        {
+            return NormalizeMac(separated.Value);
+        }
+
+        var compact = Regex.Match(text, @"(?<![0-9A-Fa-f])([0-9A-Fa-f]{12})(?![0-9A-Fa-f])");
+        if (compact.Success)
+        {
+            return NormalizeMac(compact.Groups[1].Value);
+        }
+
+        return null;
+    }
+
+    private static string NormalizeMac(string value)
+    {
+        var hex = Regex.Replace(value, @"[^0-9A-Fa-f]", string.Empty).ToUpperInvariant();
+        if (hex.Length != 12)
+        {
+            return value.Trim().ToUpperInvariant();
+        }
+
+        return string.Join(":", Enumerable.Range(0, 6).Select(i => hex.Substring(i * 2, 2)));
+    }
 }
-
-
 

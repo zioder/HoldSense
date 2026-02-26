@@ -1,55 +1,27 @@
-# Build script for HoldSense
-# This script packages the Python backend and .NET frontend into a distributable package
+# Build script for HoldSense (.NET-only backend)
 
 param(
     [string]$Configuration = "Release",
     [string]$Runtime = "win-x64",
-    [string]$Version = "1.0.0"
+    [string]$Version = "1.0.0",
+    [switch]$Minimal = $false
 )
 
 $ErrorActionPreference = "Stop"
+
+$buildType = if ($Minimal) { "Minimal (optional model download)" } else { "Full (bundled ONNX model)" }
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Building HoldSense v$Version" -ForegroundColor Cyan
 Write-Host "Configuration: $Configuration" -ForegroundColor Cyan
 Write-Host "Runtime: $Runtime" -ForegroundColor Cyan
+Write-Host "Build Type: $buildType" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-# Clean previous builds
 Write-Host "`nCleaning previous builds..." -ForegroundColor Yellow
-if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
-if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
 if (Test-Path "publish") { Remove-Item -Recurse -Force "publish" }
 
-# Check if ONNX model exists, download if missing
-if (-not (Test-Path "yolov8n.onnx")) {
-    Write-Host "`nYOLOv8 model not found. Downloading..." -ForegroundColor Yellow
-    python download_model.py
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to download YOLOv8 model!"
-        exit 1
-    }
-}
-
-# Step 1: Build Python backend with PyInstaller
-Write-Host "`n[1/4] Building Python backend with PyInstaller..." -ForegroundColor Green
-
-# Check if PyInstaller is installed
-$pyinstallerInstalled = python -m pip list 2>&1 | Select-String "pyinstaller"
-if (-not $pyinstallerInstalled) {
-    Write-Host "PyInstaller not found. Installing..." -ForegroundColor Yellow
-    python -m pip install pyinstaller
-}
-
-# Use python -m PyInstaller to avoid PATH issues
-python -m PyInstaller main.spec --clean --noconfirm
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "PyInstaller build failed!"
-    exit 1
-}
-
-# Step 2: Publish .NET app
-Write-Host "`n[2/4] Publishing .NET application..." -ForegroundColor Green
+Write-Host "`n[1/2] Publishing .NET application..." -ForegroundColor Green
 dotnet publish HoldSense/HoldSense.csproj `
     -c $Configuration `
     -r $Runtime `
@@ -65,42 +37,33 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Step 3: Copy Python backend to publish folder
-Write-Host "`n[3/4] Copying Python backend to publish folder..." -ForegroundColor Green
-$backendSource = "dist/HoldSenseBackend"
-$backendDest = "publish/HoldSense/backend"
+Write-Host "`n[2/2] Copying resources..." -ForegroundColor Green
 
-if (-not (Test-Path $backendSource)) {
-    Write-Error "Python backend build not found at $backendSource"
-    exit 1
+# Bundle ONNX model for full build only (prefer optimized model).
+if (-not $Minimal) {
+    if (Test-Path "yolo26n_416_int8.onnx") {
+        Copy-Item "yolo26n_416_int8.onnx" "publish/HoldSense/yolo26n_416_int8.onnx" -Force
+    } elseif (Test-Path "yolo26n.onnx") {
+        Copy-Item "yolo26n.onnx" "publish/HoldSense/yolo26n.onnx" -Force
+    } else {
+        Write-Host "ONNX model not found locally. Full build will rely on in-app download." -ForegroundColor Yellow
+    }
 }
 
-Copy-Item -Recurse -Force $backendSource $backendDest
-
-# Copy main.py to the publish folder (for reference or fallback)
-Copy-Item "main.py" "publish/HoldSense/backend/main.py" -Force
-
-# Copy ONNX model if not already included
-if (-not (Test-Path "$backendDest/yolov8n.onnx")) {
-    Copy-Item "yolov8n.onnx" "$backendDest/yolov8n.onnx" -Force
-}
-
-# Step 4: Copy additional resources
-Write-Host "`n[4/4] Copying additional resources..." -ForegroundColor Green
-
-# Create a default config file template
 $configTemplate = @{
     phone_bt_address = ""
-    detection_enabled = false
-    keybind_enabled = true
+    detection_enabled = $false
+    keybind_enabled = $true
     python_exe_path = ""
+    backend_mode = "dotnet"
+    enable_python_fallback = $false
     theme = "auto"
     webcam_index = 0
+    auto_detection_downloaded = (-not $Minimal)
 } | ConvertTo-Json
 
 $configTemplate | Out-File "publish/HoldSense/bt_config.json" -Encoding UTF8
 
-# Copy README and LICENSE if they exist
 if (Test-Path "README.md") {
     Copy-Item "README.md" "publish/HoldSense/" -Force
 }
@@ -108,12 +71,12 @@ if (Test-Path "LICENSE") {
     Copy-Item "LICENSE" "publish/HoldSense/" -Force
 }
 
-# Create version file
 @"
 Version: $Version
 Build Date: $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")
 Configuration: $Configuration
 Runtime: $Runtime
+Build Type: $buildType
 "@ | Out-File "publish/HoldSense/VERSION.txt" -Encoding UTF8
 
 Write-Host "`n========================================" -ForegroundColor Cyan
@@ -121,7 +84,5 @@ Write-Host "Build completed successfully!" -ForegroundColor Green
 Write-Host "Output directory: publish/HoldSense" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
-# Display folder size
 $size = (Get-ChildItem "publish/HoldSense" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
 Write-Host "Total size: $([math]::Round($size, 2)) MB" -ForegroundColor Yellow
-

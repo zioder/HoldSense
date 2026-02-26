@@ -72,13 +72,6 @@
                                    FontSize="16"
                                    FontWeight="SemiBold"/>
 
-                        <ToggleSwitch Content="Auto mode (webcam)"
-                                      IsChecked="{Binding DetectionEnabled}"/>
-                        <TextBlock Text="Automatically control Bluetooth based on webcam detection. Toggle with Ctrl+Alt+W."
-                                   FontSize="11"
-                                   Foreground="Gray"
-                                   Margin="28,0,0,0"/>
-
                         <ToggleSwitch Content="Keybind enabled (Ctrl+Alt+C)"
                                       IsChecked="{Binding KeybindEnabled}"/>
                         <TextBlock Text="Allow manual audio toggle via keyboard shortcut."
@@ -97,24 +90,94 @@
                                    FontSize="11"
                                    Foreground="Gray"
                                    Margin="28,0,0,0"/>
+                    </StackPanel>
+                </Border>
 
-                        <!-- Webcam Selection -->
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Text="Webcam" Width="120" VerticalAlignment="Center"/>
-                            <ComboBox ItemsSource="{Binding AvailableWebcams}"
-                                      SelectedItem="{Binding SelectedWebcam}"
-                                      MinWidth="160">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Name}"/>
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
+                <!-- Auto Detection Section -->
+                <Border BorderBrush="LightGray"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="15">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="Auto Detection (Phone Recognition)"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"/>
+                            <Border Background="{Binding AutoDetectionStatusColor}"
+                                    CornerRadius="10"
+                                    Padding="8,2"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="{Binding AutoDetectionStatusText}"
+                                           FontSize="11"
+                                           Foreground="White"/>
+                            </Border>
                         </StackPanel>
-                        <TextBlock Text="Select which webcam to use for detection."
-                                   FontSize="11"
-                                   Foreground="Gray"
-                                   Margin="28,0,0,0"/>
+
+                        <TextBlock Text="Automatically detect when you're holding your phone via webcam. This feature requires downloading additional AI components (~13MB)."
+                                   FontSize="12"
+                                   TextWrapping="Wrap"
+                                   Foreground="Gray"/>
+
+                        <!-- Not Downloaded State -->
+                        <StackPanel IsVisible="{Binding !AutoDetectionDownloaded}" Spacing="8">
+                            <Button Content="Download Auto Detection (~13MB)"
+                                    Command="{Binding DownloadAutoDetectionCommand}"
+                                    HorizontalAlignment="Left"
+                                    Classes="accent"/>
+                        </StackPanel>
+
+                        <!-- Download Progress -->
+                        <StackPanel IsVisible="{Binding IsDownloading}" Spacing="8">
+                            <ProgressBar Value="{Binding DownloadProgress}"
+                                         Minimum="0"
+                                         Maximum="100"
+                                         Height="8"/>
+                            <TextBlock Text="{Binding DownloadStatusText}"
+                                       FontSize="11"
+                                       Foreground="Gray"/>
+                            <Button Content="Cancel"
+                                    Command="{Binding CancelDownloadCommand}"
+                                    HorizontalAlignment="Left"/>
+                        </StackPanel>
+
+                        <!-- Downloaded State -->
+                        <StackPanel IsVisible="{Binding AutoDetectionDownloaded}" Spacing="8">
+                            <ToggleSwitch Content="Auto mode (webcam)"
+                                          IsChecked="{Binding DetectionEnabled}"/>
+                            <TextBlock Text="Toggle with Ctrl+Alt+W. Detects phone in webcam view."
+                                       FontSize="11"
+                                       Foreground="Gray"
+                                       Margin="28,0,0,0"/>
+
+                            <!-- Webcam Selection -->
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <TextBlock Text="Webcam" Width="120" VerticalAlignment="Center"/>
+                                <ComboBox ItemsSource="{Binding AvailableWebcams}"
+                                          SelectedItem="{Binding SelectedWebcam}"
+                                          MinWidth="160">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                            <TextBlock Text="Select which webcam to use for detection."
+                                       FontSize="11"
+                                       Foreground="Gray"
+                                       Margin="28,0,0,0"/>
+
+                            <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,8,0,0">
+                                <TextBlock Text="{Binding AutoDetectionSizeText}"
+                                           FontSize="11"
+                                           Foreground="Gray"
+                                           VerticalAlignment="Center"/>
+                                <Button Content="Remove"
+                                        Command="{Binding RemoveAutoDetectionCommand}"
+                                        FontSize="11"
+                                        Padding="8,4"/>
+                            </StackPanel>
+                        </StackPanel>
                     </StackPanel>
                 </Border>
             </StackPanel>
