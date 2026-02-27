@@ -2,7 +2,9 @@ using Microsoft.UI;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
 using Microsoft.UI.Composition.SystemBackdrops;
 using Microsoft.UI.Windowing;
 using _HoldSense.Services;
@@ -11,6 +13,7 @@ using _HoldSense.Views;
 using System;
 using System.ComponentModel;
 using System.Threading.Tasks;
+using Windows.UI;
 
 namespace _HoldSense;
 
@@ -23,31 +26,34 @@ internal sealed class MainWindowWinUI : Window
     private readonly IRuntimeService _runtimeService;
     private readonly WebcamService _webcamService;
 
-    // ── UI Elements (updated dynamically) ───────────────────
+    // ── Root ────────────────────────────────────────────────
     private Grid _root = null!;
 
-    // Status card
-    private TextBlock _statusLabel = null!;
-    private TextBlock _statusDescription = null!;
-    private Border _statusDot = null!;
-    private Border _accentStrip = null!;
-    private Border _activityBar = null!;
+    // ── Status area ─────────────────────────────────────────
+    private Border _statusPill = null!;
+    private TextBlock _statusPillText = null!;
+    private Ellipse _statusDot = null!;
 
-    // Quick status cards
-    private TextBlock _audioStatusText = null!;
-    private TextBlock _detectionStatusText = null!;
+    // ── Device row ──────────────────────────────────────────
+    private TextBlock _deviceName = null!;
+    private TextBlock _deviceMac = null!;
+    private FontIcon _deviceIcon = null!;
 
-    // Device card
-    private TextBlock _devicePrimaryText = null!;
-    private TextBlock _deviceSecondaryText = null!;
+    // ── Primary action button ────────────────────────────────
+    private Button _primaryButton = null!;
+    private TextBlock _primaryButtonLabel = null!;
+    private FontIcon _primaryButtonIcon = null!;
 
-    // Action bar
-    private Button _toggleButton = null!;
-    private TextBlock _toggleButtonText = null!;
-    private FontIcon _toggleButtonIcon = null!;
-    private ToggleSwitch _autoDetectionToggle = null!;
-    private Border _heroIconTile = null!;
-    private bool _suppressAutoToggleEvent;
+    // ── Auto detection toggle row ────────────────────────────
+    private ToggleSwitch _autoSwitch = null!;
+    private TextBlock _autoSwitchSubtitle = null!;
+    private bool _suppressAutoToggle;
+
+    // ── Info tiles ───────────────────────────────────────────
+    private TextBlock _audioTileValue = null!;
+    private TextBlock _detectionTileValue = null!;
+    private Border _audioTileIndicator = null!;
+    private Border _detectionTileIndicator = null!;
 
     public MainWindowWinUI(
         MainWindowViewModel viewModel,
@@ -63,49 +69,37 @@ internal sealed class MainWindowWinUI : Window
 
         Title = "HoldSense";
 
-        // ── Mica Backdrop ───────────────────────────────────
-        // Mica can fail on some Windows/runtime combinations; degrade gracefully.
-        try
-        {
-            SystemBackdrop = new MicaBackdrop { Kind = MicaKind.BaseAlt };
-        }
-        catch (Exception ex)
-        {
-            Program.LogException("MainWindowWinUI.MicaBackdrop", ex);
-        }
+        // Mica backdrop
+        try { SystemBackdrop = new MicaBackdrop { Kind = MicaKind.Base }; }
+        catch (Exception ex) { Program.LogException("MainWindowWinUI.MicaBackdrop", ex); }
+
+        ExtendsContentIntoTitleBar = true;
         ConfigureWindowChrome();
 
-        // ── Custom Title Bar ────────────────────────────────
-        ExtendsContentIntoTitleBar = true;
-
-        // ── Build UI Tree ───────────────────────────────────
-        var titleBarArea = BuildTitleBar();
-        var mainContent = BuildMainContent();
+        // Build UI
+        var titleBar = BuildTitleBar();
+        var content = BuildContent();
 
         _root = new Grid();
         _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(48) });
         _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-        Grid.SetRow(titleBarArea, 0);
-        _root.Children.Add(titleBarArea);
-
-        Grid.SetRow(mainContent, 1);
-        _root.Children.Add(mainContent);
+        Grid.SetRow(titleBar, 0);
+        _root.Children.Add(titleBar);
+        Grid.SetRow(content, 1);
+        _root.Children.Add(content);
 
         Content = _root;
-        SetTitleBar(titleBarArea);
+        SetTitleBar(titleBar);
 
-        // ── Window Size ─────────────────────────────────────
-        AppWindow.Resize(new Windows.Graphics.SizeInt32(620, 760));
+        AppWindow.Resize(new Windows.Graphics.SizeInt32(480, 680));
 
-        // ── Events ──────────────────────────────────────────
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
-        Closed += async (_, __) => await StopPythonIfRunningAsync();
+        Closed += async (_, __) => await StopIfRunningAsync();
         UpdateUi();
     }
 
     // ════════════════════════════════════════════════════════
-    //  PUBLIC API (consumed by TrayIconService & WinUIApplication)
+    //  PUBLIC API
     // ════════════════════════════════════════════════════════
 
     public void CloseForExit() => Close();
@@ -114,18 +108,11 @@ internal sealed class MainWindowWinUI : Window
     {
         try
         {
-            if (AppWindow?.Presenter is OverlappedPresenter presenter &&
-                presenter.State == OverlappedPresenterState.Minimized)
-            {
-                presenter.Restore();
-            }
-
+            if (AppWindow?.Presenter is OverlappedPresenter p && p.State == OverlappedPresenterState.Minimized)
+                p.Restore();
             AppWindow?.Show();
         }
-        catch
-        {
-        }
-
+        catch { }
         Activate();
     }
 
@@ -134,15 +121,14 @@ internal sealed class MainWindowWinUI : Window
         try
         {
             var xamlRoot = await GetXamlRootAsync();
-            var settingsVm = new SettingsViewModel(_configService, _bluetoothService, _webcamService, _runtimeService);
-            await SettingsDialog.ShowAsync(xamlRoot, settingsVm, _root.ActualTheme);
+            var vm = new SettingsViewModel(_configService, _bluetoothService, _webcamService, _runtimeService);
+            await SettingsDialog.ShowAsync(xamlRoot, vm, _root.ActualTheme);
             await _viewModel.InitializeAsync();
             await ApplyThemeFromConfigAsync();
         }
         catch (Exception ex)
         {
             Program.LogException("MainWindowWinUI.OpenSettingsAsync", ex);
-            _viewModel.StatusMessage = "Settings failed to open. Check startup-error.log for details.";
         }
     }
 
@@ -162,13 +148,13 @@ internal sealed class MainWindowWinUI : Window
         _root.RequestedTheme = theme switch
         {
             "light" => ElementTheme.Light,
-            "dark" => ElementTheme.Dark,
-            _ => ElementTheme.Default
+            "dark"  => ElementTheme.Dark,
+            _       => ElementTheme.Default
         };
     }
 
     // ════════════════════════════════════════════════════════
-    //  UI CONSTRUCTION
+    //  TITLE BAR
     // ════════════════════════════════════════════════════════
 
     private Grid BuildTitleBar()
@@ -176,397 +162,443 @@ internal sealed class MainWindowWinUI : Window
         var bar = new Grid
         {
             Height = 48,
-            Padding = new Thickness(12, 0, 12, 0)
+            Padding = new Thickness(16, 0, 12, 0)
         };
-        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });  // icon
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });  // title
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // spacer
+        bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });  // settings btn
 
-        var iconContainer = new Border
+        // App icon
+        var iconBorder = new Border
         {
-            Width = 24,
-            Height = 24,
-            CornerRadius = new CornerRadius(6),
-            Background = ThemeBrush("ControlAltFillColorSecondaryBrush"),
-            Margin = new Thickness(0, 0, 8, 0),
+            Width = 20,
+            Height = 20,
+            CornerRadius = new CornerRadius(4),
+            Margin = new Thickness(0, 0, 10, 0),
+            VerticalAlignment = VerticalAlignment.Center,
             Child = new FontIcon
             {
                 Glyph = "\uE767",
-                FontSize = 12,
-                Opacity = 0.9,
+                FontSize = 11,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
-            },
-            VerticalAlignment = VerticalAlignment.Center
+            }
         };
-        Grid.SetColumn(iconContainer, 0);
-        bar.Children.Add(iconContainer);
+        Grid.SetColumn(iconBorder, 0);
+        bar.Children.Add(iconBorder);
 
-        var title = new TextBlock
+        // App title
+        var titleText = new TextBlock
         {
             Text = "HoldSense",
             FontSize = 12,
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0.8
+            Opacity = 0.9
         };
-        Grid.SetColumn(title, 1);
-        bar.Children.Add(title);
+        Grid.SetColumn(titleText, 1);
+        bar.Children.Add(titleText);
 
-        var badge = new Border
+        // Settings button (top-right, not draggable)
+        var settingsBtn = new Button
         {
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(8, 2, 8, 2),
-            Background = ThemeBrush("ControlAltFillColorSecondaryBrush"),
-            Child = new TextBlock
-            {
-                Text = "WinUI 3",
-                FontSize = 11,
-                Opacity = 0.8
-            }
+            Height = 32,
+            Width = 32,
+            Padding = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            Content = new FontIcon { Glyph = "\uE713", FontSize = 14 }
         };
-        Grid.SetColumn(badge, 3);
-        bar.Children.Add(badge);
+        // Make it "flat" style
+        settingsBtn.Style = TryGetStyle("NavigationBackButtonNormalStyle") ?? settingsBtn.Style;
+        settingsBtn.Click += async (_, __) => await OpenSettingsAsync();
+        Grid.SetColumn(settingsBtn, 3);
+        bar.Children.Add(settingsBtn);
 
         return bar;
     }
 
-    private StackPanel BuildMainContent()
+    // ════════════════════════════════════════════════════════
+    //  MAIN CONTENT
+    // ════════════════════════════════════════════════════════
+
+    private ScrollViewer BuildContent()
     {
         var panel = new StackPanel
         {
-            Spacing = 14,
-            Padding = new Thickness(24, 12, 24, 24)
+            Spacing = 8,
+            Padding = new Thickness(20, 16, 20, 24)
         };
 
-        panel.Children.Add(BuildHeroCard());
-        panel.Children.Add(BuildServiceStatusCard());
-        panel.Children.Add(BuildQuickStatusRow());
+        panel.Children.Add(BuildHeaderSection());
         panel.Children.Add(BuildDeviceCard());
-        panel.Children.Add(BuildActionBar());
+        panel.Children.Add(BuildPrimaryButton());
+        panel.Children.Add(BuildInfoTilesRow());
+        panel.Children.Add(BuildAutoDetectionCard());
         panel.Children.Add(BuildShortcutsCard());
 
-        return panel;
+        return new ScrollViewer
+        {
+            Content = panel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+        };
     }
 
-    private Border BuildHeroCard()
+    // ── Header: App name + status pill ──────────────────────
+    private UIElement BuildHeaderSection()
     {
-        var grid = new Grid { ColumnSpacing = 14 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var row = new Grid();
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        _heroIconTile = new Border
-        {
-            Width = 42,
-            Height = 42,
-            CornerRadius = new CornerRadius(10),
-            Background = ThemeBrush("ControlStrongFillColorDefaultBrush"),
-            VerticalAlignment = VerticalAlignment.Top,
-            Child = new FontIcon
-            {
-                Glyph = "\uE767",
-                FontSize = 18,
-                Foreground = ThemeBrush("TextFillColorPrimaryBrush"),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            }
-        };
-        grid.Children.Add(_heroIconTile);
-
-        var text = new StackPanel { Spacing = 2 };
-        text.Children.Add(new TextBlock
+        var titleStack = new StackPanel { Spacing = 2 };
+        titleStack.Children.Add(new TextBlock
         {
             Text = "HoldSense",
-            FontSize = 28,
+            FontSize = 22,
             FontWeight = FontWeights.SemiBold
         });
-        text.Children.Add(new TextBlock
+        titleStack.Children.Add(new TextBlock
         {
-            Text = "Pick up your phone and route audio through your PC instantly.",
-            Opacity = 0.68,
-            TextWrapping = TextWrapping.Wrap
+            Text = "Bluetooth audio for your phone on your PC",
+            FontSize = 12,
+            Opacity = 0.6
         });
-        Grid.SetColumn(text, 1);
-        grid.Children.Add(text);
+        Grid.SetColumn(titleStack, 0);
+        row.Children.Add(titleStack);
 
-        return MakeCard(grid, new Thickness(18));
-    }
-
-    private Border BuildShortcutsCard()
-    {
-        var body = new StackPanel { Spacing = 6 };
-        body.Children.Add(new TextBlock
-        {
-            Text = "Keyboard Shortcuts",
-            FontWeight = FontWeights.SemiBold
-        });
-        body.Children.Add(new TextBlock
-        {
-            Text = "Ctrl+Alt+C toggles audio  ·  Ctrl+Alt+W toggles detection",
-            Opacity = 0.7,
-            TextWrapping = TextWrapping.Wrap
-        });
-        return MakeCard(body, new Thickness(16, 14, 16, 14));
-    }
-
-    /// <summary>
-    /// Main status card with accent left-strip indicator, status dot, label and activity bar.
-    /// </summary>
-    private UIElement BuildServiceStatusCard()
-    {
-        var outer = new Grid();
-        outer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(3) });
-        outer.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        // Accent strip on the left edge
-        _accentStrip = new Border
-        {
-            Width = 3,
-            CornerRadius = new CornerRadius(1.5),
-            Margin = new Thickness(0, 12, 0, 12),
-            Background = ThemeBrush("SystemFillColorNeutralBrush")
-        };
-        Grid.SetColumn(_accentStrip, 0);
-        outer.Children.Add(_accentStrip);
-
-        // Card body
-        var body = new StackPanel { Spacing = 6 };
-
-        // Header row with dot + label
-        var headerRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-
-        _statusDot = new Border
+        // Status pill
+        _statusDot = new Ellipse
         {
             Width = 8,
             Height = 8,
-            CornerRadius = new CornerRadius(4),
             VerticalAlignment = VerticalAlignment.Center,
-            Background = ThemeBrush("SystemFillColorNeutralBrush")
+            Fill = Brush("SystemFillColorNeutralBrush")
         };
-        headerRow.Children.Add(_statusDot);
 
-        _statusLabel = new TextBlock
+        _statusPillText = new TextBlock
         {
             Text = "Stopped",
+            FontSize = 12,
             FontWeight = FontWeights.SemiBold,
             VerticalAlignment = VerticalAlignment.Center
         };
-        headerRow.Children.Add(_statusLabel);
-        body.Children.Add(headerRow);
 
-        // Description
-        _statusDescription = new TextBlock
+        var pillContent = new StackPanel
         {
-            Text = "Press Start to begin listening in lightweight keybind mode.",
-            Opacity = 0.6,
-            TextWrapping = TextWrapping.Wrap
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center
         };
-        body.Children.Add(_statusDescription);
+        pillContent.Children.Add(_statusDot);
+        pillContent.Children.Add(_statusPillText);
 
-        // Indeterminate progress bar (visible when running)
-        _activityBar = new Border
+        _statusPill = new Border
         {
-            Height = 3,
-            CornerRadius = new CornerRadius(1.5),
-            Margin = new Thickness(0, 6, 0, 0),
-            Opacity = 0,
-            Background = ThemeBrush("SystemFillColorNeutralBrush")
+            CornerRadius = new CornerRadius(16),
+            Padding = new Thickness(12, 6, 12, 6),
+            Background = Brush("ControlAltFillColorSecondaryBrush"),
+            BorderBrush = Brush("CardStrokeColorDefaultBrush"),
+            BorderThickness = new Thickness(1),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = pillContent
         };
-        body.Children.Add(_activityBar);
+        Grid.SetColumn(_statusPill, 1);
+        row.Children.Add(_statusPill);
 
-        var card = MakeCard(body, new Thickness(12, 16, 16, 16));
-        Grid.SetColumn(card, 1);
-        outer.Children.Add(card);
-
-        return outer;
+        return row;
     }
 
-    /// <summary>
-    /// Two side-by-side mini cards: Audio and Detection status.
-    /// </summary>
-    private Grid BuildQuickStatusRow()
-    {
-        var grid = new Grid { ColumnSpacing = 12 };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        // ── Audio Card ──────────────────────────────────────
-        var audioBody = new StackPanel { Spacing = 8 };
-
-        var audioHeader = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-        audioHeader.Children.Add(new FontIcon
-        {
-            Glyph = "\uE767",
-            FontSize = 16,
-            Opacity = 0.75,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        audioHeader.Children.Add(new TextBlock
-        {
-            Text = "Audio",
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        audioBody.Children.Add(audioHeader);
-
-        _audioStatusText = new TextBlock
-        {
-            Text = "Disconnected",
-            Opacity = 0.6,
-            FontSize = 14
-        };
-        audioBody.Children.Add(_audioStatusText);
-
-        var audioCard = MakeCard(audioBody);
-        Grid.SetColumn(audioCard, 0);
-        grid.Children.Add(audioCard);
-
-        // ── Detection Card ──────────────────────────────────
-        var detBody = new StackPanel { Spacing = 8 };
-
-        var detHeader = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
-        detHeader.Children.Add(new FontIcon
-        {
-            Glyph = "\uE714",
-            FontSize = 16,
-            Opacity = 0.75,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        detHeader.Children.Add(new TextBlock
-        {
-            Text = "Detection",
-            FontWeight = FontWeights.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        detBody.Children.Add(detHeader);
-
-        _detectionStatusText = new TextBlock
-        {
-            Text = "Stopped",
-            Opacity = 0.6,
-            FontSize = 14
-        };
-        detBody.Children.Add(_detectionStatusText);
-
-        var detCard = MakeCard(detBody);
-        Grid.SetColumn(detCard, 1);
-        grid.Children.Add(detCard);
-
-        return grid;
-    }
-
-    /// <summary>
-    /// Bluetooth device info card with icon, name and subtitle.
-    /// </summary>
+    // ── Device card ─────────────────────────────────────────
     private Border BuildDeviceCard()
     {
-        var content = new Grid();
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        content.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        var row = new Grid { ColumnSpacing = 14 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-        var icon = new FontIcon
+        // BT icon tile
+        var iconTile = new Border
+        {
+            Width = 36,
+            Height = 36,
+            CornerRadius = new CornerRadius(8),
+            Background = Brush("ControlAltFillColorSecondaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _deviceIcon = new FontIcon
         {
             Glyph = "\uE702",
-            FontSize = 20,
-            Margin = new Thickness(0, 0, 16, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0.75
+            FontSize = 16,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center
         };
-        Grid.SetColumn(icon, 0);
-        content.Children.Add(icon);
+        iconTile.Child = _deviceIcon;
+        Grid.SetColumn(iconTile, 0);
+        row.Children.Add(iconTile);
 
-        var textStack = new StackPanel
-        {
-            VerticalAlignment = VerticalAlignment.Center,
-            Spacing = 2
-        };
-
-        _devicePrimaryText = new TextBlock
+        // Text
+        var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
+        _deviceName = new TextBlock
         {
             Text = "No device selected",
-            FontWeight = FontWeights.SemiBold
+            FontWeight = FontWeights.SemiBold,
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
-        textStack.Children.Add(_devicePrimaryText);
-
-        _deviceSecondaryText = new TextBlock
+        _deviceMac = new TextBlock
         {
-            Text = "Open Settings to configure a Bluetooth device",
+            Text = "Open Settings to pair a device",
+            FontSize = 12,
             Opacity = 0.6,
-            FontSize = 12
+            TextTrimming = TextTrimming.CharacterEllipsis
         };
-        textStack.Children.Add(_deviceSecondaryText);
-
+        textStack.Children.Add(_deviceName);
+        textStack.Children.Add(_deviceMac);
         Grid.SetColumn(textStack, 1);
-        content.Children.Add(textStack);
+        row.Children.Add(textStack);
 
-        return MakeCard(content);
+        // Change device button (subtle)
+        var changeBtn = new HyperlinkButton
+        {
+            Content = "Change",
+            VerticalAlignment = VerticalAlignment.Center,
+            Padding = new Thickness(8, 4, 8, 4)
+        };
+        changeBtn.Click += async (_, __) => await OpenSettingsAsync();
+        Grid.SetColumn(changeBtn, 2);
+        row.Children.Add(changeBtn);
+
+        return Card(row, new Thickness(14, 12, 14, 12));
     }
 
-    /// <summary>
-    /// Action bar with Start/Stop toggle button and Settings button.
-    /// </summary>
-    private Grid BuildActionBar()
+    // ── Primary listen button ────────────────────────────────
+    private Border BuildPrimaryButton()
     {
-        var grid = new Grid { ColumnSpacing = 10, Margin = new Thickness(0, 4, 0, 0) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        // Toggle detection (accent primary button)
-        var toggleContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        _toggleButtonIcon = new FontIcon { Glyph = "\uE768", FontSize = 14 };
-        toggleContent.Children.Add(_toggleButtonIcon);
-        _toggleButtonText = new TextBlock { Text = "Start Detection", VerticalAlignment = VerticalAlignment.Center };
-        toggleContent.Children.Add(_toggleButtonText);
-
-        _toggleButton = new Button
+        var contentStack = new StackPanel
         {
-            Content = toggleContent,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Height = 44,
-            Style = ThemeStyle("AccentButtonStyle")
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            HorizontalAlignment = HorizontalAlignment.Center
         };
-        _toggleButton.Click += async (_, __) =>
+
+        _primaryButtonIcon = new FontIcon { Glyph = "\uE768", FontSize = 16 };
+        _primaryButtonLabel = new TextBlock
+        {
+            Text = "Start Listening",
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        contentStack.Children.Add(_primaryButtonIcon);
+        contentStack.Children.Add(_primaryButtonLabel);
+
+        _primaryButton = new Button
+        {
+            Content = contentStack,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Height = 52,
+            Style = TryGetStyle("AccentButtonStyle")
+        };
+        _primaryButton.Click += async (_, __) =>
         {
             if (_viewModel.IsDetectionRunning)
                 await _viewModel.StopDetectionCommand.ExecuteAsync(null);
             else
                 await _viewModel.StartDetectionCommand.ExecuteAsync(null);
         };
-        Grid.SetColumn(_toggleButton, 0);
-        grid.Children.Add(_toggleButton);
 
-        _autoDetectionToggle = new ToggleSwitch
-        {
-            Header = "Auto Detection",
-            VerticalAlignment = VerticalAlignment.Center,
-            MinWidth = 140
-        };
-        _autoDetectionToggle.Toggled += async (_, __) =>
-        {
-            if (_suppressAutoToggleEvent)
-                return;
-            await _viewModel.ToggleAutoDetectionCommand.ExecuteAsync(null);
-        };
-        Grid.SetColumn(_autoDetectionToggle, 1);
-        grid.Children.Add(_autoDetectionToggle);
+        // Wrap in a padding-only container so the card doesn't add extra corner radius nesting
+        return Card(_primaryButton, new Thickness(0));
+    }
 
-        // Settings button
-        var settingsContent = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        settingsContent.Children.Add(new FontIcon { Glyph = "\uE713", FontSize = 14 });
-        settingsContent.Children.Add(new TextBlock { Text = "Settings", VerticalAlignment = VerticalAlignment.Center });
+    // ── Audio / Detection info tiles ─────────────────────────
+    private Grid BuildInfoTilesRow()
+    {
+        var grid = new Grid { ColumnSpacing = 8 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
-        var settingsButton = new Button
-        {
-            Content = settingsContent,
-            Height = 44
-        };
-        settingsButton.Click += async (_, __) => await OpenSettingsAsync();
-        Grid.SetColumn(settingsButton, 2);
-        grid.Children.Add(settingsButton);
+        // Audio tile
+        var audioTile = BuildInfoTile(
+            "\uE767",
+            "Audio",
+            "Disconnected",
+            out _audioTileValue,
+            out _audioTileIndicator);
+        Grid.SetColumn(audioTile, 0);
+        grid.Children.Add(audioTile);
+
+        // Detection tile
+        var detTile = BuildInfoTile(
+            "\uE714",
+            "Detection",
+            "Stopped",
+            out _detectionTileValue,
+            out _detectionTileIndicator);
+        Grid.SetColumn(detTile, 1);
+        grid.Children.Add(detTile);
 
         return grid;
+    }
+
+    private Border BuildInfoTile(string glyph, string label, string initialValue,
+        out TextBlock valueText, out Border indicator)
+    {
+        var body = new StackPanel { Spacing = 10 };
+
+        // Header row
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        header.Children.Add(new FontIcon { Glyph = glyph, FontSize = 14, Opacity = 0.7 });
+        header.Children.Add(new TextBlock
+        {
+            Text = label,
+            FontSize = 12,
+            Opacity = 0.7,
+            VerticalAlignment = VerticalAlignment.Center
+        });
+        body.Children.Add(header);
+
+        valueText = new TextBlock
+        {
+            Text = initialValue,
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold
+        };
+        body.Children.Add(valueText);
+
+        // Bottom accent line
+        indicator = new Border
+        {
+            Height = 3,
+            CornerRadius = new CornerRadius(1.5),
+            Background = Brush("SystemFillColorNeutralBrush"),
+            Opacity = 0.4
+        };
+        body.Children.Add(indicator);
+
+        return Card(body, new Thickness(14, 12, 14, 12));
+    }
+
+    // ── Auto detection card ──────────────────────────────────
+    private Border BuildAutoDetectionCard()
+    {
+        var row = new Grid { ColumnSpacing = 14 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        // Camera icon tile
+        var iconTile = new Border
+        {
+            Width = 36,
+            Height = 36,
+            CornerRadius = new CornerRadius(8),
+            Background = Brush("ControlAltFillColorSecondaryBrush"),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new FontIcon
+            {
+                Glyph = "\uE8B8",
+                FontSize = 16,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
+            }
+        };
+        Grid.SetColumn(iconTile, 0);
+        row.Children.Add(iconTile);
+
+        // Text
+        var textStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
+        textStack.Children.Add(new TextBlock
+        {
+            Text = "Auto Detection",
+            FontWeight = FontWeights.SemiBold
+        });
+        _autoSwitchSubtitle = new TextBlock
+        {
+            Text = "Detects phone via webcam automatically",
+            FontSize = 12,
+            Opacity = 0.6
+        };
+        textStack.Children.Add(_autoSwitchSubtitle);
+        Grid.SetColumn(textStack, 1);
+        row.Children.Add(textStack);
+
+        // Toggle switch (no header, just the switch)
+        _autoSwitch = new ToggleSwitch
+        {
+            OffContent = "",
+            OnContent = "",
+            MinWidth = 0,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        _autoSwitch.Toggled += async (_, __) =>
+        {
+            if (_suppressAutoToggle) return;
+            await _viewModel.ToggleAutoDetectionCommand.ExecuteAsync(null);
+        };
+        Grid.SetColumn(_autoSwitch, 2);
+        row.Children.Add(_autoSwitch);
+
+        return Card(row, new Thickness(14, 12, 14, 12));
+    }
+
+    // ── Keyboard shortcuts card ──────────────────────────────
+    private Border BuildShortcutsCard()
+    {
+        var body = new Grid { ColumnSpacing = 12 };
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        body.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var icon = new FontIcon
+        {
+            Glyph = "\uE765",
+            FontSize = 14,
+            Opacity = 0.6,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(icon, 0);
+        body.Children.Add(icon);
+
+        var shortcuts = new StackPanel { Spacing = 4, VerticalAlignment = VerticalAlignment.Center };
+        shortcuts.Children.Add(MakeShortcutRow("Ctrl + Alt + C", "Toggle audio connection"));
+        shortcuts.Children.Add(MakeShortcutRow("Ctrl + Alt + W", "Toggle detection"));
+        Grid.SetColumn(shortcuts, 1);
+        body.Children.Add(shortcuts);
+
+        return Card(body, new Thickness(14, 12, 14, 12));
+    }
+
+    private static Grid MakeShortcutRow(string keys, string description)
+    {
+        var row = new Grid { ColumnSpacing = 10 };
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(130) });
+        row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        var keyText = new TextBlock
+        {
+            Text = keys,
+            FontSize = 12,
+            FontFamily = new FontFamily("Consolas, Cascadia Code, monospace"),
+            FontWeight = FontWeights.SemiBold,
+            Opacity = 0.85
+        };
+        Grid.SetColumn(keyText, 0);
+        row.Children.Add(keyText);
+
+        var descText = new TextBlock
+        {
+            Text = description,
+            FontSize = 12,
+            Opacity = 0.6,
+            VerticalAlignment = VerticalAlignment.Center
+        };
+        Grid.SetColumn(descText, 1);
+        row.Children.Add(descText);
+
+        return row;
     }
 
     // ════════════════════════════════════════════════════════
@@ -584,65 +616,80 @@ internal sealed class MainWindowWinUI : Window
     private void UpdateUi()
     {
         bool running = _viewModel.IsDetectionRunning;
+        bool audioOn = _viewModel.IsAudioConnected;
+        bool autoOn  = _viewModel.DetectionEnabled;
 
-        // ── Status card ─────────────────────────────────────
-        var positive = ThemeBrush("SystemFillColorSuccessBrush");
-        var neutral = ThemeBrush("SystemFillColorNeutralBrush");
-
-        if (_statusLabel != null && _statusDot != null && _accentStrip != null && _statusDescription != null && _activityBar != null)
+        // ── Status pill ──────────────────────────────────────
+        if (_statusPillText != null && _statusDot != null && _statusPill != null)
         {
-            _statusLabel.Text = running ? "Running" : "Stopped";
-            _statusDot.Background = running ? positive : neutral;
-            _accentStrip.Background = running ? positive : neutral;
+            var activeBrush  = Brush("SystemFillColorSuccessBrush");
+            var neutralBrush = Brush("SystemFillColorNeutralBrush");
 
-            _statusDescription.Text = running
-                ? (_viewModel.DetectionEnabled
-                    ? "Listening. Auto-detection is active."
-                    : "Listening in lightweight keybind mode.")
-                : (string.IsNullOrWhiteSpace(_viewModel.StatusMessage) || _viewModel.StatusMessage == "Ready"
-                    ? "Press Start to begin listening in lightweight keybind mode."
-                    : _viewModel.StatusMessage);
-
-            _activityBar.Opacity = running ? 1 : 0;
-            _activityBar.Background = running ? positive : neutral;
+            _statusDot.Fill = running ? activeBrush : neutralBrush;
+            _statusPillText.Text = running ? "Active" : "Stopped";
+            _statusPill.Background = running
+                ? TintBrush(Colors.Green, 0.08f)
+                : Brush("ControlAltFillColorSecondaryBrush");
+            _statusPill.BorderBrush = running ? activeBrush : Brush("CardStrokeColorDefaultBrush");
         }
 
-        if (_heroIconTile != null)
-            _heroIconTile.Background = running ? positive : ThemeBrush("ControlStrongFillColorDefaultBrush");
-
-        // ── Quick status ────────────────────────────────────
-        if (_audioStatusText != null)
-            _audioStatusText.Text = _viewModel.IsAudioConnected ? "Connected" : "Disconnected";
-        if (_detectionStatusText != null)
-            _detectionStatusText.Text = running
-                ? (_viewModel.DetectionEnabled ? "Auto On" : "Keybind Only")
-                : "Stopped";
-
-        // ── Device card ─────────────────────────────────────
+        // ── Device card ──────────────────────────────────────
         bool hasDevice = _viewModel.SelectedDeviceName != "Not configured"
                          && !string.IsNullOrWhiteSpace(_viewModel.SelectedDeviceName);
 
-        if (_devicePrimaryText != null)
-            _devicePrimaryText.Text = hasDevice ? _viewModel.SelectedDeviceName : "No device selected";
-        if (_deviceSecondaryText != null)
-            _deviceSecondaryText.Text = hasDevice
-                ? "Bluetooth audio device"
-                : "Open Settings to configure a Bluetooth device";
+        if (_deviceName != null)
+            _deviceName.Text = hasDevice ? _viewModel.SelectedDeviceName : "No device selected";
+        if (_deviceMac != null)
+            _deviceMac.Text = hasDevice ? "Bluetooth Audio · A2DP" : "Open Settings to configure";
 
-        // ── Toggle button ───────────────────────────────────
-        if (_toggleButtonText != null)
-            _toggleButtonText.Text = running ? "Stop Detection" : "Start Detection";
-        if (_toggleButtonIcon != null)
-            _toggleButtonIcon.Glyph = running ? "\uE769" : "\uE768"; // Pause / Play
+        // ── Primary button ───────────────────────────────────
+        if (_primaryButtonLabel != null)
+            _primaryButtonLabel.Text = running ? "Stop Listening" : "Start Listening";
+        if (_primaryButtonIcon != null)
+            _primaryButtonIcon.Glyph = running ? "\uE769" : "\uE768";
 
-        if (_autoDetectionToggle != null)
+        // ── Info tiles ───────────────────────────────────────
+        if (_audioTileValue != null)
         {
-            _suppressAutoToggleEvent = true;
-            _autoDetectionToggle.IsOn = _viewModel.DetectionEnabled;
-            _autoDetectionToggle.IsEnabled = running && _viewModel.AutoDetectionAvailable;
-            _suppressAutoToggleEvent = false;
+            _audioTileValue.Text = audioOn ? "Connected" : "Disconnected";
+            _audioTileValue.Opacity = audioOn ? 1.0 : 0.6;
+        }
+        if (_audioTileIndicator != null)
+        {
+            _audioTileIndicator.Background = audioOn
+                ? Brush("SystemFillColorSuccessBrush")
+                : Brush("SystemFillColorNeutralBrush");
+            _audioTileIndicator.Opacity = audioOn ? 0.9 : 0.3;
         }
 
+        if (_detectionTileValue != null)
+        {
+            _detectionTileValue.Text = !running ? "Stopped" : autoOn ? "Auto" : "Keybind";
+            _detectionTileValue.Opacity = running ? 1.0 : 0.6;
+        }
+        if (_detectionTileIndicator != null)
+        {
+            _detectionTileIndicator.Background = running
+                ? Brush("SystemFillColorSuccessBrush")
+                : Brush("SystemFillColorNeutralBrush");
+            _detectionTileIndicator.Opacity = running ? 0.9 : 0.3;
+        }
+
+        // ── Auto detection toggle ────────────────────────────
+        if (_autoSwitch != null)
+        {
+            _suppressAutoToggle = true;
+            _autoSwitch.IsOn = autoOn;
+            _autoSwitch.IsEnabled = running && _viewModel.AutoDetectionAvailable;
+            _suppressAutoToggle = false;
+        }
+        if (_autoSwitchSubtitle != null)
+        {
+            _autoSwitchSubtitle.Text = !_viewModel.AutoDetectionAvailable
+                ? "Model not downloaded — see Settings"
+                : autoOn ? "Webcam active, watching for your phone"
+                         : "Enable to use webcam-based detection";
+        }
     }
 
     // ════════════════════════════════════════════════════════
@@ -651,47 +698,51 @@ internal sealed class MainWindowWinUI : Window
 
     private void ConfigureWindowChrome()
     {
-        if (AppWindow?.TitleBar is not AppWindowTitleBar titleBar)
-            return;
-
+        if (AppWindow?.TitleBar is not AppWindowTitleBar titleBar) return;
         titleBar.ButtonBackgroundColor = Colors.Transparent;
         titleBar.ButtonInactiveBackgroundColor = Colors.Transparent;
+        titleBar.ButtonHoverBackgroundColor = Color.FromArgb(30, 128, 128, 128);
+        titleBar.ButtonPressedBackgroundColor = Color.FromArgb(50, 128, 128, 128);
     }
 
-    private static Border MakeCard(UIElement child, Thickness? padding = null)
+    private static Border Card(UIElement child, Thickness? padding = null)
     {
         return new Border
         {
-            CornerRadius = new CornerRadius(12),
-            Padding = padding ?? new Thickness(18),
-            Background = ThemeBrush("CardBackgroundFillColorDefaultBrush"),
-            BorderBrush = ThemeBrush("CardStrokeColorDefaultBrush"),
+            CornerRadius = new CornerRadius(8),
+            Padding = padding ?? new Thickness(14),
+            Background = Brush("CardBackgroundFillColorDefaultBrush"),
+            BorderBrush = Brush("CardStrokeColorDefaultBrush"),
             BorderThickness = new Thickness(1),
             Child = child
         };
     }
 
-    private static Brush ThemeBrush(string key)
+    private static Brush Brush(string key)
     {
-        if (Application.Current.Resources.TryGetValue(key, out var value) && value is Brush brush)
-            return brush;
+        if (Application.Current.Resources.TryGetValue(key, out var value) && value is Brush b)
+            return b;
         return new SolidColorBrush(Colors.Transparent);
     }
 
-    private static Style? ThemeStyle(string key)
+    private static SolidColorBrush TintBrush(Color tint, float alpha)
     {
-        if (Application.Current.Resources.TryGetValue(key, out var value) && value is Style style)
-            return style;
+        return new SolidColorBrush(Color.FromArgb(
+            (byte)(alpha * 255),
+            tint.R, tint.G, tint.B));
+    }
+
+    private static Style? TryGetStyle(string key)
+    {
+        if (Application.Current.Resources.TryGetValue(key, out var value) && value is Style s)
+            return s;
         return null;
     }
 
-    private async Task StopPythonIfRunningAsync()
+    private async Task StopIfRunningAsync()
     {
         if (_runtimeService.IsRunning)
-        {
-            try { await _runtimeService.StopAsync(); }
-            catch { }
-        }
+            try { await _runtimeService.StopAsync(); } catch { }
     }
 
     private async Task<XamlRoot> GetXamlRootAsync()
